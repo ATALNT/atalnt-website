@@ -1,4 +1,4 @@
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import heroImage from '@/assets/hero-logistics.jpg';
 
@@ -58,9 +58,14 @@ export const Hero = () => {
               </Button>
             </a>
           </div>
-          <p className="text-sm text-muted-foreground mt-3 animate-slide-up" style={{ animationDelay: '0.5s' }}>
-            Browse roles from our client network that we're actively hiring for.
+          <p className="text-sm text-muted-foreground mt-4 animate-slide-up" style={{ animationDelay: '0.5s' }}>
+            Book a free consultation to discover how AI & talent solutions can transform your operations.
           </p>
+          <a href="/roi-calculator" className="inline-flex items-center gap-2 mt-4 text-gold hover:text-gold/80 transition-colors animate-slide-up" style={{ animationDelay: '0.6s' }}>
+            <Sparkles size={16} />
+            <span className="text-sm font-medium">See how much AI can save your business</span>
+            <ArrowRight size={14} />
+          </a>
 
         </div>
       </div>

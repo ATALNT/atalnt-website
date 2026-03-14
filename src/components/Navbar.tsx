@@ -5,12 +5,10 @@ import atalntLogo from '@/assets/atalnt-logo-transparent.png';
 
 const navLinks = [
   { label: 'Home', href: '/' },
-  { label: 'About', href: '#about' },
-  { label: 'Services', href: '#services' },
-  { label: 'Leadership', href: '#leadership' },
-  { label: 'Testimonials', href: '#testimonials' },
+  { label: 'Services', href: '/#services' },
+  { label: 'Leadership', href: '/#leadership' },
+  { label: 'Testimonials', href: '/#testimonials' },
   { label: 'Open Jobs', href: '/jobs' },
-  { label: 'ROI Calculator', href: '/roi-calculator' },
 ];
 
 export const Navbar = () => {
@@ -21,7 +19,7 @@ export const Navbar = () => {
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <a href="#" className="flex items-center">
+          <a href="/" className="flex items-center">
             <img src={atalntLogo} alt="ATALNT" className="h-[5.5rem] w-auto object-contain" />
           </a>
 
