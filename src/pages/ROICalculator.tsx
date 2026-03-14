@@ -134,7 +134,13 @@ const ROICalculator = () => {
     if (s === 2 && (!industry || !employees)) return;
     setStep(s);
     if (s === 3) calculateROI();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Scroll to the calculator section, not the top of the page
+    setTimeout(() => {
+      const calcSection = document.getElementById('calculator-section');
+      if (calcSection) {
+        calcSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 50);
   };
 
   const calculateROI = () => {
@@ -281,7 +287,7 @@ const ROICalculator = () => {
       </section>
 
       {/* Calculator */}
-      <section className="py-20 relative overflow-hidden">
+      <section id="calculator-section" className="py-20 relative overflow-hidden scroll-mt-24">
         <div className="absolute inset-0 bg-gradient-to-br from-gold/5 via-background to-background" />
         <div className="container relative z-10 mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto mb-12">
@@ -540,7 +546,7 @@ const ROICalculator = () => {
           <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
             Join hundreds of small and mid-size businesses already saving time and money with AI workflows.
           </p>
-          <Button onClick={() => { setStep(1); setResults(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+          <Button onClick={() => { setStep(1); setResults(null); setTimeout(() => { const el = document.getElementById('calculator-section'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); }}
             size="lg" className="bg-gradient-gold text-primary-foreground font-semibold px-10 py-6 text-lg hover:opacity-90 transition-all shadow-gold">
             Calculate My ROI Now <ArrowRight className="ml-2" size={20} />
           </Button>
