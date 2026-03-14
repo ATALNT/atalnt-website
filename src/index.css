@@ -1,0 +1,253 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+/* ATALNT Design System - Bold Corporate Powerhouse */
+
+@layer base {
+  :root {
+    --background: 220 20% 4%;
+    --foreground: 45 20% 95%;
+
+    --card: 220 18% 8%;
+    --card-foreground: 45 20% 95%;
+
+    --popover: 220 18% 8%;
+    --popover-foreground: 45 20% 95%;
+
+    --primary: 38 92% 50%;
+    --primary-foreground: 220 20% 4%;
+
+    --secondary: 220 15% 15%;
+    --secondary-foreground: 45 20% 95%;
+
+    --muted: 220 15% 12%;
+    --muted-foreground: 220 10% 55%;
+
+    --accent: 38 92% 50%;
+    --accent-foreground: 220 20% 4%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 45 20% 95%;
+
+    --border: 220 15% 18%;
+    --input: 220 15% 18%;
+    --ring: 38 92% 50%;
+
+    --radius: 0.5rem;
+
+    /* Custom ATALNT tokens */
+    --gold: 38 92% 50%;
+    --gold-light: 42 100% 65%;
+    --gold-dark: 32 85% 40%;
+    --navy: 220 40% 8%;
+    --navy-light: 220 30% 15%;
+    
+    --gradient-hero: linear-gradient(135deg, hsl(220 40% 8%) 0%, hsl(220 30% 12%) 50%, hsl(220 25% 6%) 100%);
+    --gradient-gold: linear-gradient(135deg, hsl(38 92% 50%) 0%, hsl(42 100% 65%) 100%);
+    --gradient-card: linear-gradient(180deg, hsl(220 18% 10%) 0%, hsl(220 20% 6%) 100%);
+    
+    --shadow-gold: 0 0 60px -12px hsl(38 92% 50% / 0.4);
+    --shadow-card: 0 25px 50px -12px hsl(0 0% 0% / 0.5);
+    
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+
+    --sidebar-background: 220 20% 4%;
+    --sidebar-foreground: 45 20% 95%;
+    --sidebar-primary: 38 92% 50%;
+    --sidebar-primary-foreground: 220 20% 4%;
+    --sidebar-accent: 220 15% 15%;
+    --sidebar-accent-foreground: 45 20% 95%;
+    --sidebar-border: 220 15% 18%;
+    --sidebar-ring: 38 92% 50%;
+  }
+
+  .dark {
+    --background: 220 20% 4%;
+    --foreground: 45 20% 95%;
+    --card: 220 18% 8%;
+    --card-foreground: 45 20% 95%;
+    --popover: 220 18% 8%;
+    --popover-foreground: 45 20% 95%;
+    --primary: 38 92% 50%;
+    --primary-foreground: 220 20% 4%;
+    --secondary: 220 15% 15%;
+    --secondary-foreground: 45 20% 95%;
+    --muted: 220 15% 12%;
+    --muted-foreground: 220 10% 55%;
+    --accent: 38 92% 50%;
+    --accent-foreground: 220 20% 4%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 45 20% 95%;
+    --border: 220 15% 18%;
+    --input: 220 15% 18%;
+    --ring: 38 92% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+  
+  .font-body {
+    font-family: var(--font-body);
+  }
+  
+  .text-gradient-gold {
+    background: linear-gradient(135deg, hsl(38 92% 50%) 0%, hsl(42 100% 65%) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  .bg-gradient-hero {
+    background: var(--gradient-hero);
+  }
+  
+  .bg-gradient-gold {
+    background: var(--gradient-gold);
+  }
+  
+  .bg-gradient-card {
+    background: var(--gradient-card);
+  }
+  
+  .shadow-gold {
+    box-shadow: var(--shadow-gold);
+  }
+  
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  
+  .animate-slide-up {
+    animation: slide-up 0.8s ease-out forwards;
+  }
+  
+  .animate-fade-in {
+    animation: fade-in 1s ease-out forwards;
+  }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px hsl(38 92% 50% / 0.3); }
+  50% { box-shadow: 0 0 40px hsl(38 92% 50% / 0.6); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Zoho Recruit Embed Overrides - Dark Theme */
+.embed_jobs_head,
+.embed_jobs_head2,
+.embed_jobs_head3 {
+  background: transparent !important;
+  border: none !important;
+}
+
+.embed_jobs_with_style_3 {
+  background: transparent !important;
+}
+
+.embed_jobs_with_style_3 .rec_job_listing_div,
+.embed_jobs_with_style_3 #rec_job_listing_div {
+  background: transparent !important;
+}
+
+/* Style the job cards for dark theme */
+.embed_jobs_with_style_3 .embed_jobs_job_name a,
+.embed_jobs_with_style_3 .embed_jobs_head3 a {
+  color: hsl(45 20% 95%) !important;
+}
+
+.embed_jobs_with_style_3 .embed_jobs_job_name a:hover {
+  color: hsl(38 92% 50%) !important;
+}
+
+.embed_jobs_with_style_3 .embed_jobs_details,
+.embed_jobs_with_style_3 .embed_jobs_location,
+.embed_jobs_with_style_3 .embed_jobs_experience,
+.embed_jobs_with_style_3 .embed_jobs_dept,
+.embed_jobs_with_style_3 .embed_jobs_type,
+.embed_jobs_with_style_3 p,
+.embed_jobs_with_style_3 span,
+.embed_jobs_with_style_3 label {
+  color: hsl(220 10% 55%) !important;
+}
+
+.embed_jobs_with_style_3 .embed_jobs_board {
+  background: hsl(220 18% 10%) !important;
+  border: 1px solid hsl(220 15% 18%) !important;
+  border-radius: 1rem !important;
+  padding: 1.5rem !important;
+  margin-bottom: 1rem !important;
+}
+
+.embed_jobs_with_style_3 .embed_jobs_board:hover {
+  border-color: hsl(38 92% 50% / 0.3) !important;
+}
+
+.embed_jobs_with_style_3 .embed_jobs_head_text {
+  color: hsl(45 20% 95%) !important;
+  font-family: var(--font-display) !important;
+}
+
+.embed_jobs_with_style_3 input,
+.embed_jobs_with_style_3 select {
+  background: hsl(220 15% 15%) !important;
+  border: 1px solid hsl(220 15% 18%) !important;
+  color: hsl(45 20% 95%) !important;
+  border-radius: 0.5rem !important;
+}
+
+.embed_jobs_with_style_3 .embed_jobs_apply_btn,
+.embed_jobs_with_style_3 .embed_jobs_btn {
+  background: linear-gradient(135deg, hsl(38 92% 50%) 0%, hsl(42 100% 65%) 100%) !important;
+  color: hsl(220 20% 4%) !important;
+  border: none !important;
+  border-radius: 9999px !important;
+  font-weight: 600 !important;
+}

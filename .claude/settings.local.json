@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "Bash(npx --version)",
+      "Read(//usr/local/bin/**)",
+      "Read(//usr/bin/**)",
+      "Bash(ls /usr/local/bin/python*)",
+      "Read(//opt/homebrew/**)",
+      "WebFetch(domain:atalnt.lovable.app)",
+      "Bash(mkdir -p /tmp/roi-calculator)",
+      "Bash(cp \"/Users/nikjain55/Desktop/Claude Code/ROI Calculator/index.html\" \"/Users/nikjain55/Desktop/Claude Code/ROI Calculator/styles.css\" \"/Users/nikjain55/Desktop/Claude Code/ROI Calculator/app.js\" /tmp/roi-calculator/)",
+      "Bash(git config:*)",
+      "Bash(brew --version)",
+      "Read(//Users/nikjain55/.nvm/versions/**)",
+      "Read(//Users/nikjain55/.bun/bin/**)",
+      "Bash(export PATH=\"/usr/local/bin:/opt/homebrew/bin:$HOME/.nvm/versions/node/*/bin:$PATH\")",
+      "Bash(npm --version)",
+      "Bash(npm install:*)",
+      "Bash(python3 -c \"from PIL import Image; print\\(''pillow available''\\)\")",
+      "Bash(pip3 install:*)",
+      "Bash(python3:*)",
+      "Bash(npx vite:*)",
+      "Bash(npx vercel:*)"
+    ]
+  }
+}
