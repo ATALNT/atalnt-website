@@ -29,8 +29,8 @@ const Apply = () => {
             <iframe
               aria-label="Recruiter Candidate Intake Form"
               frameBorder="0"
-              style={{ width: '100%', minHeight: '1200px', border: 'none' }}
-              src="https://forms.zohopublic.com/atalnt1/form/Candidateintakeform/formperma/-YlyEQ27YGiulK7mOmP95pvEd_tw_z6beK7MjVGZxcE"
+              style={{ width: '100%', minHeight: '2400px', border: 'none' }}
+              src="https://forms.zohopublic.com/atalnt1/form/Candidateintakeform/formperma/-YlyEQ27YGiuIK7mOmP95pvEd_tw_z6beK7MjVGZxcE"
             />
           </div>
         </div>
