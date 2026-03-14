@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import atalntLogo from '@/assets/atalnt-logo-transparent.png';
@@ -13,13 +14,46 @@ const navLinks = [
 
 export const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    e.preventDefault();
+    setIsOpen(false);
+
+    if (href === '/') {
+      navigate('/');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    if (href.startsWith('/#')) {
+      const sectionId = href.replace('/#', '');
+      if (location.pathname === '/') {
+        // Already on homepage, just scroll
+        const el = document.getElementById(sectionId);
+        if (el) el.scrollIntoView({ behavior: 'smooth' });
+      } else {
+        // Navigate to homepage first, then scroll after a brief delay
+        navigate('/');
+        setTimeout(() => {
+          const el = document.getElementById(sectionId);
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      }
+      return;
+    }
+
+    // Regular route links like /jobs
+    navigate(href);
+  };
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background border-0">
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
-          <a href="/" className="flex items-center">
+          <a href="/" onClick={(e) => handleNavClick(e, '/')} className="flex items-center">
             <img src={atalntLogo} alt="ATALNT" className="h-[5.5rem] w-auto object-contain" />
           </a>
 
@@ -29,6 +63,7 @@ export const Navbar = () => {
               <a
                 key={link.label}
                 href={link.href}
+                onClick={(e) => handleNavClick(e, link.href)}
                 className="text-muted-foreground hover:text-foreground transition-colors font-medium"
               >
                 {link.label}
@@ -62,8 +97,8 @@ export const Navbar = () => {
                 <a
                   key={link.label}
                   href={link.href}
+                  onClick={(e) => handleNavClick(e, link.href)}
                   className="text-muted-foreground hover:text-foreground transition-colors font-medium"
-                  onClick={() => setIsOpen(false)}
                 >
                   {link.label}
                 </a>
