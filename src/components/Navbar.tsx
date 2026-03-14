@@ -34,12 +34,12 @@ export const Navbar = () => {
         const el = document.getElementById(sectionId);
         if (el) el.scrollIntoView({ behavior: 'smooth' });
       } else {
-        // Navigate to homepage first, then scroll after a brief delay
+        // Navigate to homepage first, then scroll after page renders
         navigate('/');
         setTimeout(() => {
           const el = document.getElementById(sectionId);
           if (el) el.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
+        }, 300);
       }
       return;
     }
