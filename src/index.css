@@ -251,3 +251,39 @@
   border-radius: 9999px !important;
   font-weight: 600 !important;
 }
+
+/* Zoho Recruit v2 job listing classes */
+.rec-job-info {
+  background: hsl(220 18% 10%) !important;
+  border: 1px solid hsl(220 15% 18%) !important;
+  border-radius: 1rem !important;
+  padding: 1.5rem !important;
+  margin-bottom: 1rem !important;
+}
+
+.rec-job-info:hover {
+  border-color: hsl(38 92% 50% / 0.3) !important;
+}
+
+.rec-group {
+  background: transparent !important;
+}
+
+.rec-job-title a {
+  color: hsl(45 20% 95%) !important;
+}
+
+.rec-job-title a:hover {
+  color: hsl(38 92% 50%) !important;
+}
+
+.rec-job-info,
+.rec-job-info li,
+.rec-job-info p,
+.rec-job-info span,
+.zr_fillayout_info,
+.zr_fillayout_info li,
+.zr_fillayout_info p,
+.zr_fillayout_info span {
+  color: hsl(220 10% 55%) !important;
+}
