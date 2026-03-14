@@ -25,7 +25,7 @@ const Jobs = () => {
           page_name: 'Careers',
           source: 'CareerSite',
           site: 'https://atalnt.zohorecruit.com',
-          brand_color: '#C42104',
+          brand_color: '#D4A853',
           empty_job_msg: 'No current Openings',
         });
       }
@@ -57,7 +57,7 @@ const Jobs = () => {
             Browse open roles from our client network. We connect top talent
             with leading companies in logistics, technology, and beyond.
           </p>
-          <a href="https://admin-atalnt.zohobookings.com/#/4732308000000813002" target="_blank" rel="noopener noreferrer">
+          <a href="/apply">
             <Button
               size="lg"
               className="bg-gradient-gold text-primary-foreground font-semibold px-8 py-6 text-lg hover:opacity-90 transition-all shadow-gold"
@@ -94,7 +94,7 @@ const Jobs = () => {
             We're always looking for exceptional talent. Reach out and let's find
             the perfect opportunity for you.
           </p>
-          <a href="https://admin-atalnt.zohobookings.com/#/4732308000000813002" target="_blank" rel="noopener noreferrer">
+          <a href="/apply">
             <Button
               size="lg"
               className="bg-gradient-gold text-primary-foreground font-semibold px-8 py-6 text-lg hover:opacity-90 transition-all shadow-gold"

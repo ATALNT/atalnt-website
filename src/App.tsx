@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Contact from "./pages/Contact";
 import ROICalculator from "./pages/ROICalculator";
 import Jobs from "./pages/Jobs";
+import Apply from "./pages/Apply";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
           <Route path="/contact" element={<Contact />} />
           <Route path="/roi-calculator" element={<ROICalculator />} />
           <Route path="/jobs" element={<Jobs />} />
+          <Route path="/apply" element={<Apply />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
