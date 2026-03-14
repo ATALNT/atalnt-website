@@ -1,17 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
-import { ArrowRight, X } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const Jobs = () => {
-  const [modalUrl, setModalUrl] = useState<string | null>(null);
-
-  const closeModal = useCallback(() => {
-    setModalUrl(null);
-    document.body.style.overflow = '';
-  }, []);
-
   useEffect(() => {
     // Load Zoho Recruit embed CSS
     const link = document.createElement('link');
@@ -39,54 +32,12 @@ const Jobs = () => {
     };
     document.body.appendChild(script);
 
-    // Intercept clicks on job links to open in modal instead
-    const handleJobClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const anchor = target.closest('a[href*="zohorecruit.com/jobs"]') as HTMLAnchorElement;
-      if (anchor) {
-        e.preventDefault();
-        e.stopPropagation();
-        setModalUrl(anchor.href);
-        document.body.style.overflow = 'hidden';
-      }
-    };
-
-    // Use a MutationObserver to attach the listener once the widget loads
-    const container = document.getElementById('rec_job_listing_div');
-    if (container) {
-      container.addEventListener('click', handleJobClick, true);
-    }
-
-    // Also attach to document for safety (capture phase)
-    document.addEventListener('click', (e) => {
-      const target = e.target as HTMLElement;
-      const anchor = target.closest('#rec_job_listing_div a[href*="zohorecruit.com/jobs"]') as HTMLAnchorElement;
-      if (anchor) {
-        e.preventDefault();
-        e.stopPropagation();
-        setModalUrl(anchor.href);
-        document.body.style.overflow = 'hidden';
-      }
-    }, true);
-
     return () => {
       // Cleanup
       document.head.removeChild(link);
       document.body.removeChild(script);
-      document.body.style.overflow = '';
     };
   }, []);
-
-  // Close modal on Escape key
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeModal();
-    };
-    if (modalUrl) {
-      window.addEventListener('keydown', handleEsc);
-      return () => window.removeEventListener('keydown', handleEsc);
-    }
-  }, [modalUrl, closeModal]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -156,42 +107,6 @@ const Jobs = () => {
       </section>
 
       <Footer />
-
-      {/* Job Detail Modal */}
-      {modalUrl && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center"
-          onClick={closeModal}
-        >
-          {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
-
-          {/* Modal Content */}
-          <div
-            className="relative z-10 w-full max-w-4xl h-[85vh] mx-4 rounded-2xl overflow-hidden border border-border bg-background shadow-2xl animate-fade-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
-              <h3 className="font-display font-semibold text-lg">Job Details</h3>
-              <button
-                onClick={closeModal}
-                className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center text-muted-foreground hover:bg-destructive hover:text-white transition-all"
-                aria-label="Close"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Iframe */}
-            <iframe
-              src={modalUrl}
-              className="w-full h-[calc(85vh-65px)] bg-white"
-              title="Job Details"
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 };
