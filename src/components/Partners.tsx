@@ -15,7 +15,7 @@ const partners = [
   { name: 'Landstar', logo: landstarLogo, hasBg: true },
   { name: 'Forward Air', logo: forwardairLogo, hasBg: false },
   { name: 'Armstrong Transport Group', logo: armstrongLogo, hasBg: false },
-  { name: 'RXO', logo: rxoLogo, hasBg: false },
+  { name: 'RXO', logo: rxoLogo, hasBg: true },
   { name: 'Pegasus Logistics Group', logo: pegasusLogo, hasBg: true },
   { name: 'Bettaway Supply Chain', logo: bettawayLogo, hasBg: false },
   { name: 'EFW', logo: efwLogo, hasBg: false },
