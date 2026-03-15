@@ -20,18 +20,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { password } = req.body || {};
+    let body = req.body;
+    // Handle case where body is a string (not parsed)
+    if (typeof body === 'string') {
+      body = JSON.parse(body);
+    }
+
+    const password = body?.password;
 
     if (!password) {
-      return res.status(400).json({ error: 'Password is required' });
+      return res.status(400).json({ error: 'Password is required', bodyType: typeof req.body });
     }
 
     const dashboardPassword = process.env.DASHBOARD_PASSWORD;
     const dashboardSecret = process.env.DASHBOARD_SECRET;
 
     if (!dashboardPassword || !dashboardSecret) {
-      console.error('DASHBOARD_PASSWORD or DASHBOARD_SECRET not configured');
-      return res.status(500).json({ error: 'Server configuration error' });
+      return res.status(500).json({ error: 'Server configuration error', hasPw: !!dashboardPassword, hasSecret: !!dashboardSecret });
     }
 
     // Simple comparison (internal dashboard, not high-security)
@@ -45,8 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       token: dashboardSecret,
       expiresAt: Date.now() + 24 * 60 * 60 * 1000,
     });
-  } catch (error) {
-    console.error('Login error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+  } catch (error: any) {
+    return res.status(500).json({ error: 'Internal server error', message: error?.message });
   }
 }
