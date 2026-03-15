@@ -2,15 +2,15 @@ import atalntLogo from '@/assets/atalnt-logo-transparent.png';
 
 const footerLinks = {
   services: [
-    { label: 'Talent Solutions', href: '#services' },
-    { label: 'Agentic AI & Custom Solutions', href: '#services' },
-    { label: 'AI Candidate Sourcing', href: '#services' },
+    { label: 'Talent Solutions', href: '/#services' },
+    { label: 'Agentic AI & Custom Solutions', href: '/#services' },
+    { label: 'AI Candidate Sourcing', href: '/#services' },
   ],
   company: [
-    { label: 'About Us', href: '#about' },
-    { label: 'Leadership', href: '#leadership' },
+    { label: 'About Us', href: '/about' },
+    { label: 'Leadership', href: '/#leadership' },
     { label: 'Careers', href: '/jobs' },
-    { label: 'Contact', href: '#' },
+    { label: 'Contact', href: '/contact' },
   ],
 };
 
@@ -79,7 +79,7 @@ export const Footer = () => {
                 <a href="tel:+17047412618" className="hover:text-gold transition-colors">+1 (704) 741-2618</a>
               </p>
               <p>
-                <a href="mailto:admin@atalant.com" className="hover:text-gold transition-colors">admin@atalant.com</a>
+                <a href="mailto:admin@atalnt.com" className="hover:text-gold transition-colors">admin@atalnt.com</a>
               </p>
               <p className="pt-2 text-muted-foreground/80">
                 Mon – Fri: 8:00 AM – 6:00 PM
@@ -131,8 +131,8 @@ export const Footer = () => {
             © {new Date().getFullYear()} ATALNT. All rights reserved.
           </p>
           <div className="flex gap-6 text-sm text-muted-foreground">
-            <a href="#" className="hover:text-gold transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-gold transition-colors">Terms of Service</a>
+            <a href="/privacy" className="hover:text-gold transition-colors">Privacy Policy</a>
+            <a href="/terms" className="hover:text-gold transition-colors">Terms of Service</a>
           </div>
         </div>
       </div>

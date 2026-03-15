@@ -58,9 +58,9 @@ export const CTA = () => {
               <Phone size={18} />
               <span>+1 (704) 741-2618</span>
             </a>
-            <a href="mailto:admin@atalant.com" className="flex items-center gap-2 hover:text-gold transition-colors">
+            <a href="mailto:admin@atalnt.com" className="flex items-center gap-2 hover:text-gold transition-colors">
               <Mail size={18} />
-              <span>admin@atalant.com</span>
+              <span>admin@atalnt.com</span>
             </a>
           </div>
         </div>

@@ -17,8 +17,8 @@ const contactInfo = [
   {
     icon: Mail,
     label: 'Email',
-    value: 'admin@atalant.com',
-    href: 'mailto:admin@atalant.com',
+    value: 'admin@atalnt.com',
+    href: 'mailto:admin@atalnt.com',
   },
   {
     icon: Clock,
