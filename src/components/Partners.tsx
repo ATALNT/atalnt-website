@@ -11,7 +11,6 @@ import brownLogo from '@/assets/partners/brownlogistics.png';
 import servefreightLogo from '@/assets/partners/servefreight.svg';
 import aeronetLogo from '@/assets/partners/aeronet.png';
 
-// hasBg = logo has an opaque/white background that needs to be removed via blend mode
 const partners = [
   { name: 'Landstar', logo: landstarLogo, hasBg: true },
   { name: 'Forward Air', logo: forwardairLogo, hasBg: false },
@@ -27,59 +26,61 @@ const partners = [
   { name: 'Serve Freight', logo: servefreightLogo, hasBg: false },
 ];
 
+const LogoItem = ({ partner }: { partner: typeof partners[0] }) => (
+  <div className="flex-shrink-0 flex items-center justify-center px-8 md:px-12">
+    <img
+      src={partner.logo}
+      alt={partner.name}
+      title={partner.name}
+      className="h-8 md:h-10 w-auto object-contain select-none"
+      style={
+        partner.hasBg
+          ? {
+              filter: 'grayscale(1) invert(1)',
+              opacity: 0.45,
+              mixBlendMode: 'screen' as const,
+            }
+          : {
+              filter: 'grayscale(1) brightness(2)',
+              opacity: 0.45,
+            }
+      }
+      draggable={false}
+    />
+  </div>
+);
+
 export const Partners = () => {
   return (
-    <section className="py-20 bg-background">
-      <div className="container mx-auto px-6">
-        {/* Header */}
-        <div className="text-center mb-14">
-          <span className="text-gold font-semibold tracking-wider uppercase text-sm">
-            Trusted Partners
-          </span>
-          <h2 className="font-display text-3xl md:text-4xl font-bold mt-4">
-            Companies We <span className="text-gradient-gold">Work With</span>
-          </h2>
-        </div>
+    <section className="py-16 bg-background overflow-hidden">
+      {/* Header */}
+      <div className="text-center mb-12">
+        <p className="text-sm font-medium tracking-widest uppercase text-muted-foreground">
+          Trusted by industry leaders
+        </p>
+      </div>
 
-        {/* Logo Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1">
-          {partners.map((partner) => (
-            <div
-              key={partner.name}
-              className="group flex items-center justify-center p-6 md:p-8 rounded-xl border border-transparent hover:border-border hover:bg-card/50 transition-all duration-300"
-            >
-              <img
-                src={partner.logo}
-                alt={partner.name}
-                title={partner.name}
-                className="max-h-10 md:max-h-12 w-auto object-contain transition-all duration-500 group-hover:opacity-80"
-                style={
-                  partner.hasBg
-                    ? {
-                        // Dark logos on white bg: invert to make bg black + logo white, then screen blends black away
-                        filter: 'grayscale(1) invert(1)',
-                        opacity: 0.4,
-                        mixBlendMode: 'screen' as const,
-                      }
-                    : {
-                        // Already white/transparent logos: just grayscale and dim
-                        filter: 'grayscale(1) brightness(2)',
-                        opacity: 0.4,
-                      }
-                }
-                onMouseEnter={(e) => {
-                  if (partner.hasBg) {
-                    e.currentTarget.style.opacity = '0.7';
-                  } else {
-                    e.currentTarget.style.opacity = '0.8';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.opacity = '0.4';
-                }}
-              />
-            </div>
-          ))}
+      {/* Marquee Container */}
+      <div className="relative">
+        {/* Left fade */}
+        <div className="absolute left-0 top-0 bottom-0 w-24 md:w-40 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
+        {/* Right fade */}
+        <div className="absolute right-0 top-0 bottom-0 w-24 md:w-40 bg-gradient-to-l from-background to-transparent z-10 pointer-events-none" />
+
+        {/* Scrolling track */}
+        <div className="flex animate-marquee">
+          {/* First set */}
+          <div className="flex items-center flex-shrink-0">
+            {partners.map((partner) => (
+              <LogoItem key={`a-${partner.name}`} partner={partner} />
+            ))}
+          </div>
+          {/* Duplicate for seamless loop */}
+          <div className="flex items-center flex-shrink-0">
+            {partners.map((partner) => (
+              <LogoItem key={`b-${partner.name}`} partner={partner} />
+            ))}
+          </div>
         </div>
       </div>
     </section>
