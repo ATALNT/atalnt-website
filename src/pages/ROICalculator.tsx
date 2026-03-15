@@ -198,30 +198,61 @@ const ROICalculator = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Submit to Zoho Forms
-    const formData = new FormData();
+    // Submit to Zoho Forms using hidden iframe approach
+    // This bypasses CSRF protection that blocks fetch/AJAX requests
+    const iframeName = 'zoho_form_submit_iframe';
+    let iframe = document.getElementById(iframeName) as HTMLIFrameElement;
+    if (!iframe) {
+      iframe = document.createElement('iframe');
+      iframe.id = iframeName;
+      iframe.name = iframeName;
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+    }
+
     const nameParts = leadName.trim().split(' ');
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
-    formData.append('Name.first', firstName);
-    formData.append('Name.last', lastName);
-    formData.append('Email', leadEmail);
-    formData.append('PhoneNumber', leadPhone);
-    formData.append('SingleLine', leadCompany); // Company
-    formData.append('SingleLine1', industry); // Industry
-    formData.append('SingleLine2', String(employees)); // Employees
-    formData.append('SingleLine3', results?.annualSavings ? `$${results.annualSavings.toLocaleString()}` : ''); // Annual Savings
-    formData.append('MultiLine', selectedWorkflows.join(', ')); // Selected Workflows
 
-    try {
-      await fetch('https://forms.zohopublic.com/atalnt1/form/ROICalculatorLeadCapture/formperma/7hft96ZFqb_8101GtlIFl326nOQoZWYGwqO0Q7WPXOY/htmlRecords/submit', {
-        method: 'POST',
-        body: formData,
-        mode: 'no-cors',
-      });
-    } catch (err) {
-      console.error('Form submission error:', err);
-    }
+    // Create a real HTML form and submit it targeting the hidden iframe
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = 'https://forms.zohopublic.com/atalnt1/form/ROICalculatorLeadCapture/formperma/HPwyHwt7nxNA-qBRiUnrghDyNoVH1Nh8ymoiTGJEgl4/htmlRecords/submit';
+    form.target = iframeName;
+    form.acceptCharset = 'UTF-8';
+    form.enctype = 'multipart/form-data';
+    form.style.display = 'none';
+
+    const fields: Record<string, string> = {
+      'zf_referrer_name': '',
+      'zf_redirect_url': '',
+      'zc_gad': '',
+      'Name_First': firstName,
+      'Name_Last': lastName,
+      'Email': leadEmail,
+      'PhoneNumber_countrycode': leadPhone,
+      'SingleLine': leadCompany,
+      'SingleLine1': industry,
+      'SingleLine2': String(employees),
+      'SingleLine3': results?.annualSavings ? `$${results.annualSavings.toLocaleString()}` : '',
+      'MultiLine': selectedWorkflows.join(', '),
+    };
+
+    Object.entries(fields).forEach(([name, value]) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = value;
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+
+    // Clean up the form element after submission
+    setTimeout(() => {
+      document.body.removeChild(form);
+    }, 1000);
 
     // Track conversion in Zoho PageSense
     (window as any).pagesense = (window as any).pagesense || [];
