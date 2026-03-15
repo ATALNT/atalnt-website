@@ -20,37 +20,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    let body = req.body;
-    // Handle case where body is a string (not parsed)
-    if (typeof body === 'string') {
-      body = JSON.parse(body);
-    }
-
-    const password = body?.password;
+    // Vercel auto-parses JSON body when Content-Type is application/json
+    // but handle edge cases
+    const password = req.body?.password;
 
     if (!password) {
-      return res.status(400).json({ error: 'Password is required', bodyType: typeof req.body });
+      return res.status(400).json({ error: 'Password is required' });
     }
 
     const dashboardPassword = process.env.DASHBOARD_PASSWORD;
     const dashboardSecret = process.env.DASHBOARD_SECRET;
 
     if (!dashboardPassword || !dashboardSecret) {
-      return res.status(500).json({ error: 'Server configuration error', hasPw: !!dashboardPassword, hasSecret: !!dashboardSecret });
+      return res.status(500).json({ error: 'Server configuration error' });
     }
 
-    // Simple comparison (internal dashboard, not high-security)
     if (password !== dashboardPassword) {
       return res.status(401).json({ error: 'Invalid password' });
     }
 
-    // Return the secret as a bearer token
-    // Token expires in 24 hours (client-side enforcement)
     return res.status(200).json({
       token: dashboardSecret,
       expiresAt: Date.now() + 24 * 60 * 60 * 1000,
     });
   } catch (error: any) {
-    return res.status(500).json({ error: 'Internal server error', message: error?.message });
+    console.error('Login error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
