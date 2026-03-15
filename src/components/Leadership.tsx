@@ -82,8 +82,10 @@ export const Leadership = () => {
 
         {/* Join CTA */}
         <div className="text-center mt-16">
-          <a 
-            href="/jobs"
+          <a
+            href="https://admin-atalnt.zohobookings.com/#/4732308000000937030"
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-gold text-primary-foreground font-semibold rounded-full hover:opacity-90 transition-opacity shadow-gold"
           >
             Join Our Team

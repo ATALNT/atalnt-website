@@ -214,6 +214,11 @@ const ROICalculator = () => {
     const leads = JSON.parse(localStorage.getItem('roi_leads') || '[]');
     leads.push(data);
     localStorage.setItem('roi_leads', JSON.stringify(leads));
+
+    // Track conversion in Zoho PageSense
+    (window as any).pagesense = (window as any).pagesense || [];
+    (window as any).pagesense.push(['trackEvent', 'roi_lead_submit']);
+
     setSubmitted(true);
   };
 
