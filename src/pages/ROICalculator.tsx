@@ -195,25 +195,33 @@ const ROICalculator = () => {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const data = {
-      name: leadName,
-      email: leadEmail,
-      company: leadCompany,
-      phone: leadPhone,
-      industry,
-      employees,
-      revenue,
-      avgSalary,
-      manualHours,
-      selectedWorkflows,
-      annualSavings: results?.annualSavings,
-      timestamp: new Date().toISOString(),
-    };
-    const leads = JSON.parse(localStorage.getItem('roi_leads') || '[]');
-    leads.push(data);
-    localStorage.setItem('roi_leads', JSON.stringify(leads));
+
+    // Submit to Zoho Forms
+    const formData = new FormData();
+    const nameParts = leadName.trim().split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+    formData.append('Name.first', firstName);
+    formData.append('Name.last', lastName);
+    formData.append('Email', leadEmail);
+    formData.append('PhoneNumber', leadPhone);
+    formData.append('SingleLine', leadCompany); // Company
+    formData.append('SingleLine1', industry); // Industry
+    formData.append('SingleLine2', String(employees)); // Employees
+    formData.append('SingleLine3', results?.annualSavings ? `$${results.annualSavings.toLocaleString()}` : ''); // Annual Savings
+    formData.append('MultiLine', selectedWorkflows.join(', ')); // Selected Workflows
+
+    try {
+      await fetch('https://forms.zoho.com/atalnt1/form/ROICalculatorLeadCapture/htmlRecords/submit', {
+        method: 'POST',
+        body: formData,
+        mode: 'no-cors',
+      });
+    } catch (err) {
+      console.error('Form submission error:', err);
+    }
 
     // Track conversion in Zoho PageSense
     (window as any).pagesense = (window as any).pagesense || [];
