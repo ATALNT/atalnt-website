@@ -189,18 +189,14 @@ const About = () => {
       <section className="py-16">
         <div className="container mx-auto px-6">
           <div className="bg-gradient-card rounded-3xl border border-border p-12">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            <div className="grid grid-cols-3 gap-8 text-center">
               <div>
                 <div className="font-display text-4xl md:text-5xl font-bold text-gradient-gold mb-2">950+</div>
                 <p className="text-muted-foreground font-medium">Placements</p>
               </div>
               <div>
-                <div className="font-display text-4xl md:text-5xl font-bold text-gradient-gold mb-2">99%</div>
+                <div className="font-display text-4xl md:text-5xl font-bold text-gradient-gold mb-2">98%</div>
                 <p className="text-muted-foreground font-medium">Client Retention</p>
-              </div>
-              <div>
-                <div className="font-display text-4xl md:text-5xl font-bold text-gradient-gold mb-2">2</div>
-                <p className="text-muted-foreground font-medium">Days to First Candidate</p>
               </div>
               <div>
                 <div className="font-display text-4xl md:text-5xl font-bold text-gradient-gold mb-2">30+</div>

@@ -2,8 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 
 const stats = [
   { value: 950, suffix: '+', label: 'Placements' },
-  { value: 99, suffix: '%', label: 'Client Retention' },
-  { value: 2, suffix: '', label: 'Business Days to First Candidate' },
+  { value: 98, suffix: '%', label: 'Client Retention' },
   { value: 30, suffix: '+', label: 'Years of Experience' },
 ];
 
@@ -53,7 +52,7 @@ export const Stats = () => {
     <section className="py-20">
       <div ref={ref} className="container mx-auto px-6">
         <div className="bg-gradient-card rounded-3xl border border-border p-12 md:p-16">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-12">
+          <div className="grid grid-cols-3 gap-12">
             {stats.map((stat, index) => (
               <StatItem key={stat.label} stat={stat} isVisible={isVisible} delay={index * 100} />
             ))}
