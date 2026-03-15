@@ -46,7 +46,7 @@ export const Footer = () => {
         <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-12">
           {/* Brand */}
           <div className="lg:col-span-2">
-            <a href="#" className="flex items-center mb-6">
+            <a href="/" className="flex items-center mb-6">
               <img src={atalntLogo} alt="ATALNT" className="h-[5.5rem] w-auto object-contain" />
             </a>
             <p className="text-muted-foreground mb-6 max-w-sm">
@@ -82,7 +82,7 @@ export const Footer = () => {
                 <a href="mailto:admin@atalnt.com" className="hover:text-gold transition-colors">admin@atalnt.com</a>
               </p>
               <p className="pt-2 text-muted-foreground/80">
-                Mon – Fri: 8:00 AM – 6:00 PM
+                Mon - Fri: 8:00 AM - 6:00 PM
               </p>
             </div>
           </div>
@@ -119,8 +119,8 @@ export const Footer = () => {
           <div>
             <h4 className="font-display font-semibold mb-4">Hours</h4>
             <ul className="space-y-3 text-muted-foreground">
-              <li>Monday – Friday</li>
-              <li>8:00 AM – 6:00 PM</li>
+              <li>Monday - Friday</li>
+              <li>8:00 AM - 6:00 PM</li>
             </ul>
           </div>
         </div>

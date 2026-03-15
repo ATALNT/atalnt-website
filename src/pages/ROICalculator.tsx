@@ -211,7 +211,6 @@ const ROICalculator = () => {
       annualSavings: results?.annualSavings,
       timestamp: new Date().toISOString(),
     };
-    console.log('Lead captured:', JSON.stringify(data, null, 2));
     const leads = JSON.parse(localStorage.getItem('roi_leads') || '[]');
     leads.push(data);
     localStorage.setItem('roi_leads', JSON.stringify(leads));
@@ -485,9 +484,11 @@ const ROICalculator = () => {
                   <Button variant="outline" onClick={() => { setStep(2); setResults(null); }} className="border-border hover:bg-secondary">
                     <ArrowLeft className="mr-2" size={18} /> Adjust Inputs
                   </Button>
-                  <Button onClick={() => document.getElementById('lead-form-section')?.scrollIntoView({ behavior: 'smooth' })} className="bg-gradient-gold text-primary-foreground font-semibold px-8 hover:opacity-90 transition-all shadow-gold">
-                    Book a Meeting <ArrowRight className="ml-2" size={18} />
-                  </Button>
+                  <a href="https://admin-atalnt.zohobookings.com/#/4732308000000813002" target="_blank" rel="noopener noreferrer">
+                    <Button className="bg-gradient-gold text-primary-foreground font-semibold px-8 hover:opacity-90 transition-all shadow-gold">
+                      Book a Meeting <ArrowRight className="ml-2" size={18} />
+                    </Button>
+                  </a>
                 </div>
               </div>
             )}

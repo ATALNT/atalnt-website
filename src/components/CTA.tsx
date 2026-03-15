@@ -41,7 +41,7 @@ export const CTA = () => {
                 <ArrowRight className="ml-2" size={20} />
               </Button>
             </a>
-            <a href="https://atalnt.zohorecruit.com/jobs/Careers" target="_blank" rel="noopener noreferrer">
+            <a href="/jobs">
               <Button 
                 size="lg" 
                 variant="outline" 

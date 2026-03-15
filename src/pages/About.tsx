@@ -21,7 +21,7 @@ const values = [
   {
     icon: TrendingUp,
     title: 'Growth-Oriented',
-    description: 'We help organizations scale with confidence — whether that means building a team of 5 or transforming operations for 500.',
+    description: 'We help organizations scale with confidence, whether that means building a team of 5 or transforming operations for 500.',
   },
 ];
 
@@ -59,7 +59,7 @@ const About = () => {
             </h1>
             <p className="text-muted-foreground text-lg md:text-xl max-w-3xl mx-auto leading-relaxed">
               ATALNT is a technology and talent solutions firm that helps companies solve their toughest
-              challenges — finding skilled talent, building resilient systems, and staying ahead of disruption.
+              challenges: finding skilled talent, building resilient systems, and staying ahead of disruption.
             </p>
           </div>
         </div>
@@ -76,7 +76,7 @@ const About = () => {
               <p className="text-muted-foreground leading-relaxed">
                 To empower organizations with the talent and technology they need to compete and win.
                 We combine decades of industry expertise with cutting-edge AI to deliver solutions that
-                drive measurable results — from filling critical roles in days to automating workflows
+                drive measurable results, from filling critical roles in days to automating workflows
                 that save thousands of hours annually.
               </p>
             </div>
@@ -86,7 +86,7 @@ const About = () => {
               </h2>
               <p className="text-muted-foreground leading-relaxed">
                 To be the #1 choice for enterprise technology and talent solutions. We envision a world
-                where businesses don't have to choose between speed and quality — where the right person
+                where businesses don't have to choose between speed and quality, where the right person
                 and the right system are always within reach, powered by AI-driven intelligence and
                 human expertise.
               </p>
@@ -116,7 +116,7 @@ const About = () => {
               <p>
                 What started as a specialized recruiting firm has evolved into a full-service technology
                 and talent solutions company. Today, we serve clients across logistics, supply chain,
-                accounting, finance, and technology — delivering everything from direct-hire placements
+                accounting, finance, and technology, delivering everything from direct-hire placements
                 to enterprise AI implementations.
               </p>
               <p>

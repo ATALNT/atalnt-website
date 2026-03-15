@@ -23,7 +23,7 @@ const contactInfo = [
   {
     icon: Clock,
     label: 'Hours of Operation',
-    value: 'Mon – Fri: 8:00 AM – 6:00 PM',
+    value: 'Mon - Fri: 8:00 AM - 6:00 PM',
   },
 ];
 
