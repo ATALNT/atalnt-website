@@ -3,6 +3,7 @@
 // ============================================
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { timingSafeEqual } from 'crypto';
 import { corsHeaders } from '../lib/auth-middleware';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -42,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(401).json({ error: 'Invalid password' });
     }
 
-    const isValid = require('crypto').timingSafeEqual(passwordBuffer, expectedBuffer);
+    const isValid = timingSafeEqual(passwordBuffer, expectedBuffer);
 
     if (!isValid) {
       return res.status(401).json({ error: 'Invalid password' });

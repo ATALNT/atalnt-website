@@ -25,9 +25,7 @@ export function verifyDashboardToken(req: VercelRequest): boolean {
 
 export function corsHeaders(): Record<string, string> {
   return {
-    'Access-Control-Allow-Origin': process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:8080',
+    'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   };
