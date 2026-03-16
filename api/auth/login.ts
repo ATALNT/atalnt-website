@@ -4,21 +4,6 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-function readBody(req: VercelRequest): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
-    req.on('error', reject);
-  });
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -35,9 +20,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const rawBody = await readBody(req);
-    const parsed = JSON.parse(rawBody);
-    const password = parsed?.password;
+    // Vercel auto-parses JSON body when bodyParser is enabled (default)
+    const password = req.body?.password;
 
     if (!password) {
       return res.status(400).json({ error: 'Password is required' });
