@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { DashboardLogin } from '@/components/dashboard/DashboardLogin';
 import { RecruitDashboard } from '@/components/dashboard/RecruitDashboard';
@@ -10,6 +10,31 @@ import { LogOut, RefreshCw, Briefcase, Phone } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 export default function Dashboard() {
+  // Hide Zoho SalesIQ chat widget on dashboard page
+  useEffect(() => {
+    const hideChat = () => {
+      const chatWidget = document.querySelector('.zsiq_floatmain') as HTMLElement;
+      if (chatWidget) chatWidget.style.display = 'none';
+      // Also try the SalesIQ API
+      if ((window as any).$zoho?.salesiq?.floatwindow) {
+        (window as any).$zoho.salesiq.floatwindow.visible('hide');
+      }
+    };
+    // Run immediately and after a delay (widget loads async)
+    hideChat();
+    const timer = setTimeout(hideChat, 2000);
+    const timer2 = setTimeout(hideChat, 5000);
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(timer2);
+      // Show chat widget again when leaving dashboard
+      const chatWidget = document.querySelector('.zsiq_floatmain') as HTMLElement;
+      if (chatWidget) chatWidget.style.display = '';
+      if ((window as any).$zoho?.salesiq?.floatwindow) {
+        (window as any).$zoho.salesiq.floatwindow.visible('show');
+      }
+    };
+  }, []);
   const { token, isAuthenticated, login, logout } = useAuth();
   const [datePreset, setDatePreset] = useState('this_week');
   const [activeTab, setActiveTab] = useState('recruit');

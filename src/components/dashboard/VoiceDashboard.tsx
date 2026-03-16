@@ -37,10 +37,12 @@ export function VoiceDashboard({ token, datePreset }: VoiceDashboardProps) {
 
   if (callsQuery.isError) {
     return (
-      <div className="p-8 text-center">
-        <AlertTriangle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold text-foreground">Failed to load Voice data</h3>
-        <p className="text-sm text-muted-foreground mt-2">{callsQuery.error?.message}</p>
+      <div className="p-12 text-center">
+        <Phone className="h-12 w-12 text-muted-foreground/50 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-foreground">Phone & Texts Coming Soon</h3>
+        <p className="text-sm text-muted-foreground mt-2 max-w-md mx-auto">
+          Zoho Voice integration is being configured. Call logs, SMS data, and agent performance metrics will appear here once connected.
+        </p>
       </div>
     );
   }
