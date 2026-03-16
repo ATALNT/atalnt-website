@@ -1,11 +1,16 @@
 // ============================================
 // GET /api/recruit/applications - Pipeline & Application Data
-// Full recruiting agency analytics with funnel, velocity, bottleneck detection
+// Full recruiting agency analytics: funnel, velocity, bottleneck detection
+//
+// STATUS MAPPING (from real Zoho Recruit data):
+// Associated → Applied → Submitted to HM → Interview (1st/2nd/3rd) → Qualified → Offer → Hired
+// With rejection branches: Unqualified, Rejected by ops, Rejected by HM,
+//   Interviewed-Rejected, Rejected by partner, Offer declined, Withdrawn
 // ============================================
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// --- Inlined auth helpers (Vercel ESM can't resolve ../lib imports) ---
+// --- Inlined auth helpers ---
 
 function verifyDashboardToken(req: VercelRequest): boolean {
   const authHeader = req.headers.authorization;
@@ -16,77 +21,104 @@ function verifyDashboardToken(req: VercelRequest): boolean {
   return token === secret;
 }
 
-interface TokenResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  api_domain: string;
-}
-
+interface TokenResponse { access_token: string; token_type: string; expires_in: number; api_domain: string; }
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 async function getZohoAccessToken(): Promise<string> {
-  if (cachedToken && Date.now() < cachedToken.expiresAt - 60000) {
-    return cachedToken.token;
-  }
+  if (cachedToken && Date.now() < cachedToken.expiresAt - 60000) return cachedToken.token;
   const clientId = process.env.ZOHO_CLIENT_ID;
   const clientSecret = process.env.ZOHO_CLIENT_SECRET;
   const refreshToken = process.env.ZOHO_REFRESH_TOKEN;
-  if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error('Missing Zoho OAuth credentials');
-  }
-  const params = new URLSearchParams({
-    grant_type: 'refresh_token',
-    client_id: clientId,
-    client_secret: clientSecret,
-    refresh_token: refreshToken,
-  });
-  const response = await fetch('https://accounts.zoho.com/oauth/v2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: params.toString(),
-  });
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Zoho OAuth failed: ${response.status} - ${errorText}`);
-  }
+  if (!clientId || !clientSecret || !refreshToken) throw new Error('Missing Zoho OAuth credentials');
+  const params = new URLSearchParams({ grant_type: 'refresh_token', client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken });
+  const response = await fetch('https://accounts.zoho.com/oauth/v2/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: params.toString() });
+  if (!response.ok) { const errorText = await response.text(); throw new Error(`Zoho OAuth failed: ${response.status} - ${errorText}`); }
   const data: TokenResponse = await response.json();
   cachedToken = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
   return data.access_token;
 }
 
-// Zoho lookup fields can be string, {name,id}, [{name,id}], etc.
 function zohoStr(val: any, fallback = 'Unknown'): string {
   if (!val) return fallback;
   if (typeof val === 'string') return val;
-  if (Array.isArray(val)) {
-    if (val.length === 0) return fallback;
-    return zohoStr(val[0], fallback);
-  }
-  if (typeof val === 'object') {
-    return val.name || val.display_value || val.full_name || fallback;
-  }
+  if (Array.isArray(val)) return val.length === 0 ? fallback : zohoStr(val[0], fallback);
+  if (typeof val === 'object') return val.name || val.display_value || val.full_name || fallback;
   return String(val);
 }
 
-// --- End inlined helpers ---
+// --- End helpers ---
 
-// Define the pipeline stage order for a direct placement recruiting firm
-// This represents the candidate journey from entry to placement
-const PIPELINE_ORDER = [
-  'Associated',
-  'Applied',
-  'Submitted-to-hiring-manager',
-  'Interview-Scheduled',
-  'Qualified',
-  'Hired',
+// =============================================
+// REAL FUNNEL STAGES (based on actual Zoho data)
+// =============================================
+const FUNNEL_STAGES = [
+  'Entered Pipeline',    // 0 - Associated or Applied
+  'Submitted to Client', // 1 - Sent to hiring manager
+  'Interviewed',         // 2 - Any interview round (1st, 2nd, 3rd)
+  'Qualified',           // 3 - Passed interviews
+  'Offer',               // 4 - Offer made/accepted
+  'Hired',               // 5 - Placement complete
 ];
 
-// Terminal/exit statuses — candidates no longer active in the pipeline
-const TERMINAL_STATUSES = ['Hired', 'Rejected', 'Rejected-by-ops', 'Archived'];
+// Map EVERY real Zoho status to the highest funnel stage the candidate reached
+// This uses lowercase matching for safety
+function getMaxFunnelStage(status: string): number {
+  const s = status.toLowerCase().trim();
 
-// Active statuses where candidates should be progressing
-const ACTIVE_STATUSES = ['Associated', 'Applied', 'Submitted-to-hiring-manager', 'Interview-Scheduled', 'Qualified'];
+  // Stage 5: Hired
+  if (s === 'hired') return 5;
+
+  // Stage 4: Offer (made, accepted, or declined)
+  if (s.includes('offer')) return 4;
+
+  // Stage 3: Qualified
+  if (s === 'qualified') return 3;
+
+  // Stage 2: Interviewed (any round, including post-interview rejection)
+  if (s.includes('interview')) return 2;
+  if (s === 'rejected by partner') return 2; // Partner rejection = post-interview
+
+  // Stage 1: Submitted to client (including client-side rejection)
+  if (s.includes('submitted')) return 1;
+  if (s === 'rejected by hiring manager') return 1; // HM rejected = was submitted
+
+  // Stage 0: Entered pipeline (applied, associated, or early rejection)
+  if (s === 'associated' || s === 'applied') return 0;
+  if (s === 'unqualified') return 0; // Screened out before submission
+  if (s.includes('rejected by ops') || s === 'rejected by ops') return 0;
+  if (s === 'rejected') return 0; // General rejection, assume pre-submission
+  if (s === 'archived') return 0;
+  if (s === 'withdrawn') return 0;
+
+  // Unknown status - at least entered pipeline
+  return 0;
+}
+
+// Determine if a status is "active" (candidate still progressing, needs action)
+function isActiveStatus(status: string): boolean {
+  const s = status.toLowerCase().trim();
+  // Active = not rejected, not archived, not hired, not withdrawn, not offer-declined
+  if (s === 'hired') return false;
+  if (s.includes('reject')) return false;
+  if (s === 'archived') return false;
+  if (s === 'withdrawn') return false;
+  if (s === 'unqualified') return false;
+  if (s === 'offer declined') return false;
+  return true;
+}
+
+// Categorize rejection reason for breakdown
+function getRejectionCategory(status: string): string | null {
+  const s = status.toLowerCase().trim();
+  if (s === 'unqualified' || s.includes('rejected by ops')) return 'Screening';
+  if (s === 'rejected by hiring manager') return 'Client Rejected';
+  if (s.includes('interviewed') && s.includes('reject')) return 'Post-Interview';
+  if (s === 'rejected by partner') return 'Partner Rejected';
+  if (s === 'offer declined') return 'Offer Declined';
+  if (s === 'withdrawn') return 'Candidate Withdrew';
+  if (s === 'rejected') return 'General';
+  return null;
+}
 
 interface ZohoApplication {
   id: string;
@@ -103,33 +135,16 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
   const allApps: ZohoApplication[] = [];
   let page = 1;
   let hasMore = true;
-
   while (hasMore) {
     const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Candidate_Name,Job_Opening,Client_Name,Application_Status,Created_Time,Modified_Time,Assigned_Recruiter&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
-
-    const response = await fetch(url, {
-      headers: {
-        Authorization: `Zoho-oauthtoken ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 204) break;
-      throw new Error(`Zoho Recruit API error: ${response.status}`);
-    }
-
+    const response = await fetch(url, { headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' } });
+    if (!response.ok) { if (response.status === 204) break; throw new Error(`Zoho Recruit API error: ${response.status}`); }
     const data = await response.json();
-    if (data.data) {
-      allApps.push(...data.data);
-    }
-
+    if (data.data) allApps.push(...data.data);
     hasMore = data.info?.more_records ?? false;
     page++;
     if (page > 25) break;
   }
-
-  // Filter by date range if provided
   if (dateFrom || dateTo) {
     const from = dateFrom ? new Date(dateFrom).getTime() : 0;
     const to = dateTo ? new Date(dateTo).getTime() : Date.now();
@@ -138,14 +153,13 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
       return created >= from && created <= to;
     });
   }
-
   return allApps;
 }
 
 function daysBetween(date1: Date, date2: Date): number {
   const t1 = date1.getTime();
   const t2 = date2.getTime();
-  if (isNaN(t1) || isNaN(t2)) return 0; // Guard against invalid dates
+  if (isNaN(t1) || isNaN(t2)) return 0;
   return Math.floor(Math.abs(t2 - t1) / (1000 * 60 * 60 * 24));
 }
 
@@ -153,12 +167,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-
   if (req.method === 'OPTIONS') return res.status(200).end();
-
-  if (!verifyDashboardToken(req)) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
+  if (!verifyDashboardToken(req)) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     const { from, to } = req.query as { from?: string; to?: string };
@@ -167,7 +177,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const now = new Date();
 
     // =============================================
-    // 1. PIPELINE BY STATUS (existing, improved)
+    // 1. RAW PIPELINE BY STATUS (show all real statuses)
     // =============================================
     const statusCounts: Record<string, number> = {};
     applications.forEach((app) => {
@@ -176,93 +186,86 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // =============================================
-    // 2. CONVERSION FUNNEL
-    // Tracks how candidates flow through the pipeline
-    // Each stage shows: count, % of total, conversion from prev stage
+    // 2. CONVERSION FUNNEL (using real status mapping)
+    // For each candidate, determine the highest funnel stage they reached.
+    // A candidate at "Interviewed - Rejected" still REACHED the Interview stage.
+    // A candidate at "Rejected by hiring manager" still REACHED Submitted stage.
     // =============================================
-    const funnelCounts: Record<string, number> = {};
-    PIPELINE_ORDER.forEach((stage) => {
-      funnelCounts[stage] = 0;
-    });
-    // Count candidates who REACHED each stage (current status or beyond)
+    const funnelReached = new Array(FUNNEL_STAGES.length).fill(0);
+
     applications.forEach((app) => {
       const status = app.Application_Status || '';
-      const stageIndex = PIPELINE_ORDER.indexOf(status);
-      if (stageIndex >= 0) {
-        // Candidate reached this stage and all prior stages
-        for (let i = 0; i <= stageIndex; i++) {
-          funnelCounts[PIPELINE_ORDER[i]]++;
-        }
-      }
-      // Also count terminal statuses for where they exited
-      // Rejected candidates still passed through earlier stages
-      if (status === 'Rejected' || status === 'Rejected-by-ops') {
-        // They at least applied
-        funnelCounts['Associated'] = (funnelCounts['Associated'] || 0) + 1;
-        funnelCounts['Applied'] = (funnelCounts['Applied'] || 0) + 1;
+      const maxStage = getMaxFunnelStage(status);
+      // Count this candidate in every stage up to and including their max
+      for (let i = 0; i <= maxStage; i++) {
+        funnelReached[i]++;
       }
     });
 
-    const totalEntrants = funnelCounts['Associated'] || funnelCounts['Applied'] || applications.length;
-    const funnel = PIPELINE_ORDER.map((stage, index) => {
-      const count = funnelCounts[stage] || 0;
-      const prevCount = index > 0 ? (funnelCounts[PIPELINE_ORDER[index - 1]] || 1) : totalEntrants;
+    const funnel = FUNNEL_STAGES.map((stage, index) => {
+      const count = funnelReached[index];
+      const prevCount = index > 0 ? funnelReached[index - 1] : count;
       return {
         stage,
         count,
-        percentOfTotal: totalEntrants > 0 ? Math.round((count / totalEntrants) * 100) : 0,
+        percentOfTotal: funnelReached[0] > 0 ? Math.round((count / funnelReached[0]) * 100) : 0,
         conversionFromPrev: index === 0 ? 100 : (prevCount > 0 ? Math.round((count / prevCount) * 100) : 0),
         dropoff: index === 0 ? 0 : Math.max(0, prevCount - count),
       };
     });
 
     // =============================================
-    // 3. STAGE VELOCITY (Bottleneck Detection)
-    // How long are candidates sitting in each stage?
-    // Uses Modified_Time to calculate days since last activity
+    // 3. REJECTION BREAKDOWN
+    // Where in the process are candidates failing?
     // =============================================
-    const stageVelocity: Record<string, { totalDays: number; count: number; staleCount: number; candidates: string[] }> = {};
-    ACTIVE_STATUSES.forEach((s) => {
-      stageVelocity[s] = { totalDays: 0, count: 0, staleCount: 0, candidates: [] };
-    });
-
+    const rejectionBreakdown: Record<string, number> = {};
     applications.forEach((app) => {
-      const status = app.Application_Status || '';
-      if (ACTIVE_STATUSES.includes(status)) {
-        const modified = new Date(app.Modified_Time);
-        const daysInStage = daysBetween(modified, now);
-        if (stageVelocity[status]) {
-          stageVelocity[status].totalDays += daysInStage;
-          stageVelocity[status].count++;
-          if (daysInStage >= 7) {
-            stageVelocity[status].staleCount++;
-            stageVelocity[status].candidates.push(zohoStr(app.Candidate_Name));
-          }
-        }
+      const cat = getRejectionCategory(app.Application_Status || '');
+      if (cat) {
+        rejectionBreakdown[cat] = (rejectionBreakdown[cat] || 0) + 1;
       }
     });
 
-    const velocity = ACTIVE_STATUSES.map((stage) => {
-      const data = stageVelocity[stage];
-      return {
+    // =============================================
+    // 4. STAGE VELOCITY (Bottleneck Detection)
+    // How long are ACTIVE candidates sitting in each stage?
+    // =============================================
+    const stageVelocity: Record<string, { totalDays: number; count: number; staleCount: number }> = {};
+
+    applications.forEach((app) => {
+      const status = app.Application_Status || '';
+      if (!isActiveStatus(status)) return;
+
+      const modified = new Date(app.Modified_Time);
+      const daysInStage = daysBetween(modified, now);
+
+      if (!stageVelocity[status]) {
+        stageVelocity[status] = { totalDays: 0, count: 0, staleCount: 0 };
+      }
+      stageVelocity[status].totalDays += daysInStage;
+      stageVelocity[status].count++;
+      if (daysInStage >= 7) stageVelocity[status].staleCount++;
+    });
+
+    const velocity = Object.entries(stageVelocity)
+      .map(([stage, data]) => ({
         stage,
         activeCandidates: data.count,
         avgDaysInStage: data.count > 0 ? Math.round((data.totalDays / data.count) * 10) / 10 : 0,
         staleCandidates: data.staleCount,
         isBottleneck: data.count > 0 && (data.totalDays / data.count) > 7,
-      };
-    }).filter((v) => v.activeCandidates > 0);
+      }))
+      .filter((v) => v.activeCandidates > 0)
+      .sort((a, b) => b.activeCandidates - a.activeCandidates);
 
     // =============================================
-    // 4. STALE CANDIDATES (no movement 7+ days)
-    // These need immediate attention
+    // 5. STALE CANDIDATES (active but no movement 7+ days)
     // =============================================
     const staleCandidates = applications
       .filter((app) => {
         const status = app.Application_Status || '';
-        if (!ACTIVE_STATUSES.includes(status)) return false;
-        const modified = new Date(app.Modified_Time);
-        return daysBetween(modified, now) >= 7;
+        if (!isActiveStatus(status)) return false;
+        return daysBetween(new Date(app.Modified_Time), now) >= 7;
       })
       .map((app) => ({
         candidateName: zohoStr(app.Candidate_Name),
@@ -275,12 +278,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .sort((a, b) => b.daysSinceUpdate - a.daysSinceUpdate);
 
     // =============================================
-    // 5. RECRUITER PERFORMANCE (enhanced with rates)
+    // 6. RECRUITER PERFORMANCE (using flexible matching)
     // =============================================
     const recruiterStats: Record<string, {
-      submissions: number;
-      submitted: number;
-      interviews: number;
+      totalCandidates: number;
+      reachedSubmission: number;
+      reachedInterview: number;
+      reachedOffer: number;
       hires: number;
       rejected: number;
       active: number;
@@ -289,109 +293,97 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     applications.forEach((app) => {
       const recruiter = zohoStr(app.Assigned_Recruiter, 'Unassigned');
       if (!recruiterStats[recruiter]) {
-        recruiterStats[recruiter] = { submissions: 0, submitted: 0, interviews: 0, hires: 0, rejected: 0, active: 0 };
+        recruiterStats[recruiter] = { totalCandidates: 0, reachedSubmission: 0, reachedInterview: 0, reachedOffer: 0, hires: 0, rejected: 0, active: 0 };
       }
-      recruiterStats[recruiter].submissions++;
+      const stats = recruiterStats[recruiter];
+      const status = app.Application_Status || '';
+      const maxStage = getMaxFunnelStage(status);
 
-      const status = (app.Application_Status || '').toLowerCase();
-      if (status.includes('submitted') || status.includes('interview') || status.includes('qualified') || status === 'hired') {
-        recruiterStats[recruiter].submitted++;
-      }
-      if (status.includes('interview') || status.includes('qualified') || status === 'hired') {
-        recruiterStats[recruiter].interviews++;
-      }
-      if (status === 'hired') recruiterStats[recruiter].hires++;
-      if (status.includes('reject')) recruiterStats[recruiter].rejected++;
-      if (ACTIVE_STATUSES.includes(app.Application_Status || '')) recruiterStats[recruiter].active++;
+      stats.totalCandidates++;
+      if (maxStage >= 1) stats.reachedSubmission++;
+      if (maxStage >= 2) stats.reachedInterview++;
+      if (maxStage >= 4) stats.reachedOffer++;
+      if (maxStage >= 5) stats.hires++;
+      if (getRejectionCategory(status)) stats.rejected++;
+      if (isActiveStatus(status)) stats.active++;
     });
 
     const recruiterPerformance = Object.entries(recruiterStats)
-      .map(([name, stats]) => ({
+      .map(([name, s]) => ({
         recruiterName: name,
-        submissions: stats.submissions,
-        submittedToClient: stats.submitted,
-        interviews: stats.interviews,
-        hires: stats.hires,
-        rejected: stats.rejected,
-        activePipeline: stats.active,
-        submitToInterviewRate: stats.submitted > 0 ? Math.round((stats.interviews / stats.submitted) * 100) : 0,
-        interviewToHireRate: stats.interviews > 0 ? Math.round((stats.hires / stats.interviews) * 100) : 0,
-        overallPlacementRate: stats.submissions > 0 ? Math.round((stats.hires / stats.submissions) * 100) : 0,
+        totalCandidates: s.totalCandidates,
+        submittedToClient: s.reachedSubmission,
+        interviews: s.reachedInterview,
+        offers: s.reachedOffer,
+        hires: s.hires,
+        rejected: s.rejected,
+        activePipeline: s.active,
+        submitToInterviewRate: s.reachedSubmission > 0 ? Math.round((s.reachedInterview / s.reachedSubmission) * 100) : 0,
+        interviewToHireRate: s.reachedInterview > 0 ? Math.round((s.hires / s.reachedInterview) * 100) : 0,
+        overallPlacementRate: s.totalCandidates > 0 ? Math.round((s.hires / s.totalCandidates) * 100) : 0,
       }))
-      .sort((a, b) => b.submissions - a.submissions);
+      .sort((a, b) => b.totalCandidates - a.totalCandidates);
 
     // =============================================
-    // 6. CLIENT HEALTH
-    // Which clients are easy vs hard to fill?
+    // 7. CLIENT HEALTH (using flexible matching)
     // =============================================
     const clientStats: Record<string, {
-      total: number;
-      submitted: number;
-      interviews: number;
-      hires: number;
-      rejected: number;
-      active: number;
+      total: number; reachedSubmission: number; reachedInterview: number;
+      hires: number; rejected: number; active: number;
     }> = {};
 
     applications.forEach((app) => {
       const client = zohoStr(app.Client_Name);
       if (!clientStats[client]) {
-        clientStats[client] = { total: 0, submitted: 0, interviews: 0, hires: 0, rejected: 0, active: 0 };
+        clientStats[client] = { total: 0, reachedSubmission: 0, reachedInterview: 0, hires: 0, rejected: 0, active: 0 };
       }
-      clientStats[client].total++;
+      const s = clientStats[client];
+      const status = app.Application_Status || '';
+      const maxStage = getMaxFunnelStage(status);
 
-      const status = (app.Application_Status || '').toLowerCase();
-      if (status.includes('submitted') || status.includes('interview') || status.includes('qualified') || status === 'hired') {
-        clientStats[client].submitted++;
-      }
-      if (status.includes('interview') || status.includes('qualified') || status === 'hired') {
-        clientStats[client].interviews++;
-      }
-      if (status === 'hired') clientStats[client].hires++;
-      if (status.includes('reject')) clientStats[client].rejected++;
-      if (ACTIVE_STATUSES.includes(app.Application_Status || '')) clientStats[client].active++;
+      s.total++;
+      if (maxStage >= 1) s.reachedSubmission++;
+      if (maxStage >= 2) s.reachedInterview++;
+      if (maxStage >= 5) s.hires++;
+      if (getRejectionCategory(status)) s.rejected++;
+      if (isActiveStatus(status)) s.active++;
     });
 
     const clientHealth = Object.entries(clientStats)
-      .map(([clientName, stats]) => ({
+      .map(([clientName, s]) => ({
         clientName,
-        totalCandidates: stats.total,
-        submittedToClient: stats.submitted,
-        interviews: stats.interviews,
-        hires: stats.hires,
-        rejected: stats.rejected,
-        activePipeline: stats.active,
-        rejectionRate: stats.total > 0 ? Math.round((stats.rejected / stats.total) * 100) : 0,
-        interviewRate: stats.submitted > 0 ? Math.round((stats.interviews / stats.submitted) * 100) : 0,
-        placementRate: stats.total > 0 ? Math.round((stats.hires / stats.total) * 100) : 0,
+        totalCandidates: s.total,
+        submittedToClient: s.reachedSubmission,
+        interviews: s.reachedInterview,
+        hires: s.hires,
+        rejected: s.rejected,
+        activePipeline: s.active,
+        rejectionRate: s.total > 0 ? Math.round((s.rejected / s.total) * 100) : 0,
+        interviewRate: s.reachedSubmission > 0 ? Math.round((s.reachedInterview / s.reachedSubmission) * 100) : 0,
+        placementRate: s.total > 0 ? Math.round((s.hires / s.total) * 100) : 0,
       }))
       .sort((a, b) => b.totalCandidates - a.totalCandidates);
 
     // =============================================
-    // 7. OVERVIEW STATS (fixed accuracy)
+    // 8. OVERVIEW STATS (accurate using funnel mapping)
     // =============================================
     const totalApplications = applications.length;
-    const totalActive = applications.filter((a) => ACTIVE_STATUSES.includes(a.Application_Status || '')).length;
-    const totalSubmittedToClient = applications.filter((a) => {
-      const s = (a.Application_Status || '').toLowerCase();
-      return s.includes('submitted') || s.includes('interview') || s.includes('qualified') || s === 'hired';
-    }).length;
-    const totalInterviews = applications.filter((a) => {
-      const s = (a.Application_Status || '').toLowerCase();
-      return s.includes('interview') || s.includes('qualified') || s === 'hired';
-    }).length;
-    const totalHires = applications.filter((a) => (a.Application_Status || '').toLowerCase() === 'hired').length;
-    const totalRejected = applications.filter((a) => (a.Application_Status || '').toLowerCase().includes('reject')).length;
+    const totalActive = applications.filter((a) => isActiveStatus(a.Application_Status || '')).length;
+    const totalSubmittedToClient = funnelReached[1] || 0; // Stage 1: Submitted
+    const totalInterviews = funnelReached[2] || 0;        // Stage 2: Interviewed
+    const totalOffers = funnelReached[4] || 0;             // Stage 4: Offer
+    const totalHires = funnelReached[5] || 0;              // Stage 5: Hired
+    const totalRejected = applications.filter((a) => getRejectionCategory(a.Application_Status || '') !== null).length;
     const totalStale = staleCandidates.length;
+    const totalWithdrawn = applications.filter((a) => (a.Application_Status || '').toLowerCase() === 'withdrawn').length;
 
-    // Avg days from creation to current stage for all active candidates
     const activeDaysSum = applications
-      .filter((a) => ACTIVE_STATUSES.includes(a.Application_Status || ''))
+      .filter((a) => isActiveStatus(a.Application_Status || ''))
       .reduce((sum, a) => sum + daysBetween(new Date(a.Created_Time), now), 0);
     const avgDaysInPipeline = totalActive > 0 ? Math.round((activeDaysSum / totalActive) * 10) / 10 : 0;
 
     // =============================================
-    // 8. DAILY VOLUME (existing)
+    // 9. DAILY VOLUME
     // =============================================
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const dailyVolume: Record<string, number> = {};
@@ -410,20 +402,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           totalActive,
           totalSubmittedToClient,
           totalInterviews,
+          totalOffers,
           totalHires,
           totalRejected,
+          totalWithdrawn,
           totalStale,
           avgDaysInPipeline,
         },
         funnel,
+        rejectionBreakdown: Object.entries(rejectionBreakdown)
+          .map(([reason, count]) => ({ reason, count }))
+          .sort((a, b) => b.count - a.count),
         velocity,
-        staleCandidates: staleCandidates.slice(0, 20),
+        staleCandidates: staleCandidates.slice(0, 25),
         pipelineByStatus: Object.entries(statusCounts)
           .map(([status, count]) => ({ status, count }))
           .sort((a, b) => b.count - a.count),
         recruiterPerformance,
         clientHealth: clientHealth.slice(0, 15),
-        applicationsByClient: clientHealth.map((c) => ({ clientName: c.clientName, count: c.totalCandidates })),
         dailyVolume: Object.entries(dailyVolume)
           .map(([date, count]) => ({ date, count }))
           .sort((a, b) => a.date.localeCompare(b.date)),

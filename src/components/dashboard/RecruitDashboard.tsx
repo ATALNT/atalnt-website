@@ -12,25 +12,48 @@ import {
   Zap, AlertCircle, Info
 } from 'lucide-react';
 
+// Colors for funnel stages (from API)
+const FUNNEL_COLORS: Record<string, string> = {
+  'Entered Pipeline': '#64748b',
+  'Submitted to Client': '#D4A853',
+  'Interviewed': '#8b5cf6',
+  'Qualified': '#22c55e',
+  'Offer': '#f59e0b',
+  'Hired': '#10b981',
+};
+
+// Colors for raw Zoho statuses (pipeline view)
 const STATUS_COLORS: Record<string, string> = {
   'Associated': '#64748b',
   'Applied': '#3b82f6',
-  'Submitted-to-hiring-manager': '#D4A853',
+  'Submitted-to-hiring manager': '#D4A853',
   'Interview-Scheduled': '#8b5cf6',
+  '2nd Interview-Scheduled': '#7c3aed',
+  '3rd Interview-Scheduled': '#6d28d9',
   'Qualified': '#22c55e',
+  'Offer made': '#f59e0b',
+  'Offer accepted': '#eab308',
+  'Offer declined': '#f97316',
   'Hired': '#10b981',
   'Rejected': '#ef4444',
-  'Rejected-by-ops': '#dc2626',
-  'Archived': '#6b7280',
+  'Rejected by ops': '#dc2626',
+  'Rejected by hiring manager': '#e11d48',
+  'Interviewed - Rejected': '#be123c',
+  'Rejected by partner': '#9f1239',
+  'Unqualified': '#6b7280',
+  'Withdrawn': '#a855f7',
+  'Archived': '#4b5563',
 };
 
-const STAGE_LABELS: Record<string, string> = {
-  'Associated': 'Associated',
-  'Applied': 'Applied',
-  'Submitted-to-hiring-manager': 'Submitted to Client',
-  'Interview-Scheduled': 'Interview',
-  'Qualified': 'Qualified',
-  'Hired': 'Hired',
+// Rejection category colors
+const REJECTION_COLORS: Record<string, string> = {
+  'Screening': '#dc2626',
+  'Client Rejected': '#e11d48',
+  'Post-Interview': '#be123c',
+  'Partner Rejected': '#9f1239',
+  'Offer Declined': '#f97316',
+  'Candidate Withdrew': '#a855f7',
+  'General': '#6b7280',
 };
 
 interface RecruitDashboardProps {
@@ -84,6 +107,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const recruiterPerf = appsData?.recruiterPerformance || [];
   const clientHealth = appsData?.clientHealth || [];
   const pipeline = appsData?.pipelineByStatus || [];
+  const rejectionBreakdown = appsData?.rejectionBreakdown || [];
 
   return (
     <div className="space-y-6">
@@ -105,7 +129,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
       {/* ============================================ */}
       {/* KPI OVERVIEW ROW                             */}
       {/* ============================================ */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 lg:grid-cols-10 gap-3">
         <DashboardCard
           title="Open Jobs"
           value={jobsData?.overview?.totalOpenJobs ?? 0}
@@ -132,16 +156,29 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
           icon={<UserCheck className="h-4 w-4" />}
         />
         <DashboardCard
+          title="Offers"
+          value={overview.totalOffers ?? 0}
+          subtitle={periodLabel}
+          icon={<Zap className="h-4 w-4" />}
+        />
+        <DashboardCard
           title="Hires"
           value={overview.totalHires ?? 0}
           subtitle={periodLabel}
           icon={<Trophy className="h-4 w-4" />}
+          accent
         />
         <DashboardCard
           title="Rejected"
           value={overview.totalRejected ?? 0}
           subtitle={periodLabel}
           icon={<TrendingDown className="h-4 w-4" />}
+        />
+        <DashboardCard
+          title="Withdrawn"
+          value={overview.totalWithdrawn ?? 0}
+          subtitle={periodLabel}
+          icon={<AlertTriangle className="h-4 w-4" />}
         />
         <DashboardCard
           title="Avg Days"
@@ -179,8 +216,8 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
               {funnel.map((stage: any, index: number) => {
                 const maxCount = Math.max(...funnel.map((s: any) => s.count));
                 const barWidth = maxCount > 0 ? Math.max((stage.count / maxCount) * 100, 3) : 3;
-                const color = STATUS_COLORS[stage.stage] || '#D4A853';
-                const label = STAGE_LABELS[stage.stage] || stage.stage;
+                const color = FUNNEL_COLORS[stage.stage] || '#D4A853';
+                const label = stage.stage;
                 const isDropoff = index > 0 && stage.conversionFromPrev < 50;
 
                 return (
@@ -250,7 +287,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
             {velocity.length > 0 ? (
               <div className="space-y-4">
                 {velocity.map((stage: any) => {
-                  const label = STAGE_LABELS[stage.stage] || stage.stage;
+                  const label = stage.stage;
                   const isBottleneck = stage.isBottleneck;
                   const urgencyColor = stage.avgDaysInStage > 14 ? 'text-red-400' : stage.avgDaysInStage > 7 ? 'text-amber-400' : 'text-emerald-400';
                   const bgColor = stage.avgDaysInStage > 14 ? 'bg-red-500/5 border-red-500/10' : stage.avgDaysInStage > 7 ? 'bg-amber-500/5 border-amber-500/10' : 'bg-white/[0.02] border-white/[0.04]';
@@ -305,7 +342,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                   const maxCount = Math.max(...pipeline.map((e: any) => e.count));
                   const barWidth = Math.max((entry.count / maxCount) * 100, 4);
                   const color = STATUS_COLORS[entry.status] || '#D4A853';
-                  const label = STAGE_LABELS[entry.status] || entry.status.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+                  const label = entry.status;
                   return (
                     <div key={entry.status} className="group">
                       <div className="flex items-center justify-between mb-1">
@@ -337,6 +374,41 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
       </div>
 
       {/* ============================================ */}
+      {/* REJECTION BREAKDOWN                           */}
+      {/* Where in the process are we losing candidates? */}
+      {/* ============================================ */}
+      {rejectionBreakdown.length > 0 && (
+        <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-red-500/20 to-transparent" />
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+                <TrendingDown className="h-3.5 w-3.5 text-red-400/60" />
+                Rejection Breakdown — Where Are We Losing Candidates?
+              </CardTitle>
+              <span className="text-[10px] text-white/20">{periodLabel}</span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+              {rejectionBreakdown.map((item: any) => {
+                const totalRej = rejectionBreakdown.reduce((sum: number, r: any) => sum + r.count, 0);
+                const pct = totalRej > 0 ? Math.round((item.count / totalRej) * 100) : 0;
+                const color = REJECTION_COLORS[item.reason] || '#6b7280';
+                return (
+                  <div key={item.reason} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-center">
+                    <div className="text-2xl font-bold mb-1" style={{ color }}>{item.count}</div>
+                    <div className="text-[10px] text-white/40 font-semibold uppercase tracking-wider mb-1">{item.reason}</div>
+                    <div className="text-[10px] text-white/20">{pct}% of rejections</div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ============================================ */}
       {/* RECRUITER SCORECARD                          */}
       {/* The most important view for managing your team */}
       {/* ============================================ */}
@@ -359,6 +431,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                   <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Total</TableHead>
                   <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Submitted</TableHead>
                   <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Interviews</TableHead>
+                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Offers</TableHead>
                   <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Hires</TableHead>
                   <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Active</TableHead>
                   <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Sub→Int %</TableHead>
@@ -370,9 +443,16 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                 {recruiterPerf.slice(0, 15).map((r: any) => (
                   <TableRow key={r.recruiterName} className="border-white/[0.03] hover:bg-white/[0.02]">
                     <TableCell className="font-medium text-white/80">{r.recruiterName}</TableCell>
-                    <TableCell className="text-right text-white/50">{r.submissions}</TableCell>
+                    <TableCell className="text-right text-white/50">{r.totalCandidates}</TableCell>
                     <TableCell className="text-right text-[#D4A853] font-semibold">{r.submittedToClient}</TableCell>
                     <TableCell className="text-right text-purple-400">{r.interviews}</TableCell>
+                    <TableCell className="text-right">
+                      {r.offers > 0 ? (
+                        <span className="text-amber-400 font-semibold">{r.offers}</span>
+                      ) : (
+                        <span className="text-white/20">0</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       {r.hires > 0 ? (
                         <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{r.hires}</Badge>
@@ -526,7 +606,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                   </TableHeader>
                   <TableBody>
                     {staleCandidates.slice(0, 15).map((c: any, i: number) => {
-                      const statusLabel = STAGE_LABELS[c.status] || c.status;
+                      const statusLabel = c.status;
                       return (
                         <TableRow key={`${c.candidateName}-${i}`} className="border-white/[0.03] hover:bg-white/[0.02]">
                           <TableCell className="font-medium text-white/80 text-sm">{c.candidateName}</TableCell>
@@ -651,12 +731,16 @@ function HelpSection() {
             <div>
               <h4 className="text-white/60 font-semibold mb-1">Candidate Journey (Funnel)</h4>
               <p className="text-white/30 text-xs leading-relaxed">
-                <span className="text-white/50">Associated</span> — Candidate linked to a job opening<br />
-                <span className="text-white/50">Applied</span> — Candidate formally applied or was sourced<br />
+                <span className="text-white/50">Entered Pipeline</span> — Candidate associated or applied to a job<br />
                 <span className="text-white/50">Submitted to Client</span> — Recruiter sent profile to hiring manager<br />
-                <span className="text-white/50">Interview</span> — Client scheduled an interview<br />
-                <span className="text-white/50">Qualified</span> — Passed interview, being considered<br />
-                <span className="text-white/50">Hired</span> — Offer accepted, placement made
+                <span className="text-white/50">Interviewed</span> — Client scheduled 1st, 2nd, or 3rd interview<br />
+                <span className="text-white/50">Qualified</span> — Passed interviews, being considered<br />
+                <span className="text-white/50">Offer</span> — Offer made, accepted, or declined<br />
+                <span className="text-white/50">Hired</span> — Offer accepted, placement complete
+              </p>
+              <p className="text-white/20 text-[10px] leading-relaxed mt-1">
+                Each candidate is counted at their <em>highest reached stage</em>. A candidate rejected after interview
+                still counts as having reached the Interview stage. This gives an accurate picture of pipeline throughput.
               </p>
             </div>
             <div>
@@ -685,6 +769,18 @@ function HelpSection() {
                 <span className="text-white/50">Sub→Int %</span> — Of candidates submitted to clients, what % got interviews? Measures submission quality.<br />
                 <span className="text-white/50">Int→Hire %</span> — Of candidates interviewed, what % were hired? Measures closing ability.<br />
                 <span className="text-white/50">Overall %</span> — Total hires / total candidates. End-to-end placement rate.
+              </p>
+            </div>
+            <div>
+              <h4 className="text-white/60 font-semibold mb-1">Rejection Breakdown</h4>
+              <p className="text-white/30 text-xs leading-relaxed">
+                <span className="text-white/50">Screening</span> — Rejected by ops or marked unqualified before submission<br />
+                <span className="text-white/50">Client Rejected</span> — Hiring manager rejected the submitted profile<br />
+                <span className="text-white/50">Post-Interview</span> — Rejected after the interview stage<br />
+                <span className="text-white/50">Partner Rejected</span> — Rejected by a client partner<br />
+                <span className="text-white/50">Offer Declined</span> — Candidate declined the offer<br />
+                <span className="text-white/50">Candidate Withdrew</span> — Candidate voluntarily withdrew<br />
+                <span className="text-white/50">General</span> — Generic rejection, stage unknown
               </p>
             </div>
             <div>
