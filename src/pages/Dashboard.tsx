@@ -6,7 +6,7 @@ import { VoiceDashboard } from '@/components/dashboard/VoiceDashboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LogOut, RefreshCw, Briefcase, Phone } from 'lucide-react';
+import { LogOut, RefreshCw, Briefcase, Phone, Signal } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 function getDateRange(preset: string): { from: string; to: string } {
@@ -37,16 +37,14 @@ function getDateRange(preset: string): { from: string; to: string } {
       return { from: start.toISOString(), to };
     }
     default: {
-      const start = new Date(now);
-      start.setDate(now.getDate() - now.getDay());
-      start.setHours(0, 0, 0, 0);
+      const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       return { from: start.toISOString(), to };
     }
   }
 }
 
 export default function Dashboard() {
-  // Hide Zoho SalesIQ chat widget via injected CSS - more reliable than DOM manipulation
+  // Hide Zoho SalesIQ chat widget via injected CSS
   useEffect(() => {
     const style = document.createElement('style');
     style.id = 'hide-salesiq-dashboard';
@@ -67,7 +65,7 @@ export default function Dashboard() {
   }, []);
 
   const { token, isAuthenticated, login, logout } = useAuth();
-  const [datePreset, setDatePreset] = useState('this_week');
+  const [datePreset, setDatePreset] = useState('last_7_days');
   const [activeTab, setActiveTab] = useState('recruit');
   const queryClient = useQueryClient();
 
@@ -82,31 +80,46 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-[#0a0b0f]">
+      {/* Subtle grid background */}
+      <div className="fixed inset-0 opacity-[0.03] pointer-events-none" style={{
+        backgroundImage: 'linear-gradient(rgba(212,168,83,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(212,168,83,0.3) 1px, transparent 1px)',
+        backgroundSize: '60px 60px',
+      }} />
+
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-50 border-b border-[#D4A853]/10 bg-[#0a0b0f]/90 backdrop-blur-xl">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <img
-              src="/atalnt-logo-transparent.png"
-              alt="ATALNT"
-              className="h-8"
-            />
+            <div className="relative">
+              <img
+                src="/atalnt-logo-transparent.png"
+                alt="ATALNT"
+                className="h-8 relative z-10"
+              />
+              <div className="absolute inset-0 blur-lg bg-[#D4A853]/20 rounded-full" />
+            </div>
             <div className="hidden sm:block">
-              <h1 className="text-lg font-bold font-display text-foreground leading-none">
-                Analytics Dashboard
-              </h1>
-              <p className="text-xs text-muted-foreground">Real-time team performance</p>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-bold font-display text-white leading-none tracking-wide">
+                  Executive Dashboard
+                </h1>
+                <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
+                  <Signal className="h-2.5 w-2.5 text-emerald-400 animate-pulse" />
+                  <span className="text-[10px] font-medium text-emerald-400 uppercase tracking-widest">Live</span>
+                </div>
+              </div>
+              <p className="text-[11px] text-[#8a8a9a] mt-0.5 tracking-wide">Real-time operational intelligence</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
             {/* Date Preset Selector */}
             <Select value={datePreset} onValueChange={setDatePreset}>
-              <SelectTrigger className="w-[160px] bg-card/80 border-border/50 text-sm">
+              <SelectTrigger className="w-[160px] bg-white/[0.03] border-white/[0.08] text-sm text-white/80 hover:border-[#D4A853]/30 transition-colors">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="bg-[#12131a] border-white/10">
                 <SelectItem value="today">Today</SelectItem>
                 <SelectItem value="this_week">This Week</SelectItem>
                 <SelectItem value="this_month">This Month</SelectItem>
@@ -120,7 +133,7 @@ export default function Dashboard() {
               variant="outline"
               size="icon"
               onClick={handleRefresh}
-              className="border-border/50"
+              className="border-white/[0.08] bg-white/[0.03] text-white/60 hover:text-[#D4A853] hover:border-[#D4A853]/30 hover:bg-[#D4A853]/5 transition-all"
               title="Refresh data"
             >
               <RefreshCw className="h-4 w-4" />
@@ -131,7 +144,7 @@ export default function Dashboard() {
               variant="ghost"
               size="icon"
               onClick={logout}
-              className="text-muted-foreground hover:text-foreground"
+              className="text-white/40 hover:text-white/80"
               title="Logout"
             >
               <LogOut className="h-4 w-4" />
@@ -141,19 +154,19 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6">
+      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 relative z-10">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-card/80 border border-border/50 p-1">
+          <TabsList className="bg-white/[0.03] border border-white/[0.06] p-1 backdrop-blur-sm">
             <TabsTrigger
               value="recruit"
-              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center gap-2 px-6"
+              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#D4A853] data-[state=active]:to-[#b8912e] data-[state=active]:text-black data-[state=active]:font-semibold data-[state=active]:shadow-lg data-[state=active]:shadow-[#D4A853]/20 flex items-center gap-2 px-6 text-white/60 transition-all"
             >
               <Briefcase className="h-4 w-4" />
               <span className="hidden sm:inline">Recruiting</span>
             </TabsTrigger>
             <TabsTrigger
               value="voice"
-              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground flex items-center gap-2 px-6"
+              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#D4A853] data-[state=active]:to-[#b8912e] data-[state=active]:text-black data-[state=active]:font-semibold data-[state=active]:shadow-lg data-[state=active]:shadow-[#D4A853]/20 flex items-center gap-2 px-6 text-white/60 transition-all"
             >
               <Phone className="h-4 w-4" />
               <span className="hidden sm:inline">Phone & Texts</span>
@@ -171,10 +184,13 @@ export default function Dashboard() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border/30 py-4 mt-8">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center justify-between text-xs text-muted-foreground">
-          <span>ATALNT LLC - Internal Analytics</span>
-          <span>Auto-refreshes every 5 minutes</span>
+      <footer className="border-t border-white/[0.04] py-4 mt-8 relative z-10">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center justify-between text-[11px] text-white/20 tracking-wide">
+          <span>ATALNT LLC - Executive Intelligence Platform</span>
+          <div className="flex items-center gap-1.5">
+            <div className="h-1.5 w-1.5 rounded-full bg-emerald-500/60 animate-pulse" />
+            <span>Auto-refreshes every 5 minutes</span>
+          </div>
         </div>
       </footer>
     </div>

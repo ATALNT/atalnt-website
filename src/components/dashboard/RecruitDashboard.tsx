@@ -8,7 +8,7 @@ import { fetchRecruitJobs, fetchRecruitApplications } from '@/lib/dashboard-api'
 import { Briefcase, Users, Send, Trophy, AlertTriangle } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell
+  Cell
 } from 'recharts';
 
 const COLORS = {
@@ -33,6 +33,15 @@ const STATUS_COLORS: Record<string, string> = {
   'Associated': '#64748b',
 };
 
+const TOOLTIP_STYLE = {
+  backgroundColor: 'rgba(10, 11, 15, 0.95)',
+  border: '1px solid rgba(212, 168, 83, 0.15)',
+  borderRadius: '10px',
+  color: '#fff',
+  backdropFilter: 'blur(12px)',
+  boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+};
+
 interface RecruitDashboardProps {
   token: string;
   datePreset: string;
@@ -43,7 +52,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const jobsQuery = useQuery({
     queryKey: ['recruit', 'jobs'],
     queryFn: () => fetchRecruitJobs(token),
-    refetchInterval: 5 * 60 * 1000, // 5 min
+    refetchInterval: 5 * 60 * 1000,
     staleTime: 2 * 60 * 1000,
   });
 
@@ -64,9 +73,9 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   if (jobsQuery.isError || appsQuery.isError) {
     return (
       <div className="p-8 text-center">
-        <AlertTriangle className="h-12 w-12 text-red-400 mx-auto mb-4" />
-        <h3 className="text-lg font-semibold text-foreground">Failed to load Recruit data</h3>
-        <p className="text-sm text-muted-foreground mt-2">
+        <AlertTriangle className="h-12 w-12 text-red-400/60 mx-auto mb-4" />
+        <h3 className="text-lg font-semibold text-white">Failed to load Recruit data</h3>
+        <p className="text-sm text-white/30 mt-2">
           {jobsQuery.error?.message || appsQuery.error?.message || 'Check API connection'}
         </p>
       </div>
@@ -74,6 +83,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   }
 
   const activeJobsByClient = (jobsData?.jobsByClient || []).filter((c: any) => c.inProgress > 0);
+  const periodLabel = datePreset.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
   return (
     <div className="space-y-6">
@@ -89,25 +99,25 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
         <DashboardCard
           title="Applications"
           value={appsData?.overview?.totalApplications ?? 0}
-          subtitle={datePreset.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+          subtitle={periodLabel}
           icon={<Users className="h-5 w-5" />}
         />
         <DashboardCard
           title="Submissions"
           value={appsData?.overview?.submissionsThisWeek ?? appsData?.overview?.totalApplications ?? 0}
-          subtitle={datePreset.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+          subtitle={periodLabel}
           icon={<Send className="h-5 w-5" />}
         />
         <DashboardCard
           title="Interviews"
           value={(appsData?.recruiterPerformance || []).reduce((sum: number, r: any) => sum + r.interviews, 0)}
-          subtitle={datePreset.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+          subtitle={periodLabel}
           icon={<Send className="h-5 w-5" />}
         />
         <DashboardCard
           title="Hires"
           value={appsData?.overview?.hiresThisMonth ?? 0}
-          subtitle={datePreset.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+          subtitle={periodLabel}
           icon={<Trophy className="h-5 w-5" />}
         />
       </div>
@@ -115,9 +125,10 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Jobs by Client */}
-        <Card className="border-border/50 bg-card/80">
+        <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D4A853]/20 to-transparent" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em]">
               Active Jobs by Client
             </CardTitle>
           </CardHeader>
@@ -125,37 +136,31 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
             {activeJobsByClient.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={activeJobsByClient} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 18%)" />
-                  <XAxis type="number" stroke="hsl(220 10% 55%)" fontSize={12} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                  <XAxis type="number" stroke="rgba(255,255,255,0.15)" fontSize={12} tick={{ fill: 'rgba(255,255,255,0.4)' }} />
                   <YAxis
                     type="category"
                     dataKey="clientName"
-                    stroke="hsl(220 10% 55%)"
+                    stroke="rgba(255,255,255,0.15)"
                     fontSize={11}
                     width={120}
-                    tick={{ fill: 'hsl(45 20% 85%)' }}
+                    tick={{ fill: 'rgba(255,255,255,0.6)' }}
                   />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'hsl(220 18% 10%)',
-                      border: '1px solid hsl(220 15% 20%)',
-                      borderRadius: '8px',
-                      color: 'hsl(45 20% 95%)',
-                    }}
-                  />
-                  <Bar dataKey="inProgress" name="In-Progress" fill={COLORS.inProgress} radius={[0, 4, 4, 0]} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
+                  <Bar dataKey="inProgress" name="In-Progress" fill={COLORS.inProgress} radius={[0, 6, 6, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-center text-muted-foreground py-12">No active jobs</p>
+              <p className="text-center text-white/20 py-12">No active jobs</p>
             )}
           </CardContent>
         </Card>
 
         {/* Pipeline by Status */}
-        <Card className="border-border/50 bg-card/80">
+        <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D4A853]/20 to-transparent" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em]">
               Application Pipeline
             </CardTitle>
           </CardHeader>
@@ -163,25 +168,18 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
             {(appsData?.pipelineByStatus || []).length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={appsData.pipelineByStatus.slice(0, 10)} margin={{ bottom: 60 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 15% 18%)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                   <XAxis
                     dataKey="status"
-                    stroke="hsl(220 10% 55%)"
+                    stroke="rgba(255,255,255,0.15)"
                     fontSize={10}
                     angle={-45}
                     textAnchor="end"
-                    tick={{ fill: 'hsl(45 20% 85%)' }}
+                    tick={{ fill: 'rgba(255,255,255,0.5)' }}
                   />
-                  <YAxis stroke="hsl(220 10% 55%)" fontSize={12} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: 'hsl(220 18% 10%)',
-                      border: '1px solid hsl(220 15% 20%)',
-                      borderRadius: '8px',
-                      color: 'hsl(45 20% 95%)',
-                    }}
-                  />
-                  <Bar dataKey="count" name="Applications" radius={[4, 4, 0, 0]}>
+                  <YAxis stroke="rgba(255,255,255,0.15)" fontSize={12} tick={{ fill: 'rgba(255,255,255,0.4)' }} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} />
+                  <Bar dataKey="count" name="Applications" radius={[6, 6, 0, 0]}>
                     {appsData.pipelineByStatus.slice(0, 10).map((entry: any, index: number) => (
                       <Cell key={index} fill={STATUS_COLORS[entry.status] || '#D4A853'} />
                     ))}
@@ -189,7 +187,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-center text-muted-foreground py-12">No application data</p>
+              <p className="text-center text-white/20 py-12">No application data</p>
             )}
           </CardContent>
         </Card>
@@ -198,33 +196,34 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
       {/* Recruiter Performance & Zero Submissions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recruiter Performance */}
-        <Card className="border-border/50 bg-card/80">
+        <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D4A853]/20 to-transparent" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em]">
               Recruiter Performance
             </CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow className="border-border/30">
-                  <TableHead className="text-muted-foreground">Recruiter</TableHead>
-                  <TableHead className="text-muted-foreground text-right">Submissions</TableHead>
-                  <TableHead className="text-muted-foreground text-right">Interviews</TableHead>
-                  <TableHead className="text-muted-foreground text-right">Hires</TableHead>
+                <TableRow className="border-white/[0.04] hover:bg-transparent">
+                  <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Recruiter</TableHead>
+                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Submissions</TableHead>
+                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Interviews</TableHead>
+                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Hires</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(appsData?.recruiterPerformance || []).slice(0, 10).map((r: any) => (
-                  <TableRow key={r.recruiterName} className="border-border/20">
-                    <TableCell className="font-medium text-foreground">{r.recruiterName}</TableCell>
-                    <TableCell className="text-right text-primary font-semibold">{r.submissions}</TableCell>
-                    <TableCell className="text-right">{r.interviews}</TableCell>
+                  <TableRow key={r.recruiterName} className="border-white/[0.03] hover:bg-white/[0.02]">
+                    <TableCell className="font-medium text-white/80">{r.recruiterName}</TableCell>
+                    <TableCell className="text-right text-[#D4A853] font-semibold">{r.submissions}</TableCell>
+                    <TableCell className="text-right text-white/50">{r.interviews}</TableCell>
                     <TableCell className="text-right">
                       {r.hires > 0 ? (
-                        <Badge variant="secondary" className="bg-emerald-500/20 text-emerald-400">{r.hires}</Badge>
+                        <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{r.hires}</Badge>
                       ) : (
-                        <span className="text-muted-foreground">0</span>
+                        <span className="text-white/20">0</span>
                       )}
                     </TableCell>
                   </TableRow>
@@ -235,10 +234,11 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
         </Card>
 
         {/* Zero Submission Jobs */}
-        <Card className="border-border/50 bg-card/80">
+        <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-amber-500/20 to-transparent" />
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-400" />
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-400/60" />
               Jobs With Zero Candidates
             </CardTitle>
           </CardHeader>
@@ -246,26 +246,26 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
             {(jobsData?.zeroSubmissionJobs || []).length > 0 ? (
               <Table>
                 <TableHeader>
-                  <TableRow className="border-border/30">
-                    <TableHead className="text-muted-foreground">Client</TableHead>
-                    <TableHead className="text-muted-foreground">Job Title</TableHead>
-                    <TableHead className="text-muted-foreground text-right">Days Open</TableHead>
+                  <TableRow className="border-white/[0.04] hover:bg-transparent">
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Client</TableHead>
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Job Title</TableHead>
+                    <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Days Open</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {jobsData.zeroSubmissionJobs.slice(0, 10).map((job: any) => (
-                    <TableRow key={job.jobId} className="border-border/20">
-                      <TableCell className="font-medium text-foreground text-sm">{job.clientName}</TableCell>
-                      <TableCell className="text-sm">{job.postingTitle}</TableCell>
+                    <TableRow key={job.jobId} className="border-white/[0.03] hover:bg-white/[0.02]">
+                      <TableCell className="font-medium text-white/80 text-sm">{job.clientName}</TableCell>
+                      <TableCell className="text-white/50 text-sm">{job.postingTitle}</TableCell>
                       <TableCell className="text-right">
                         <Badge
                           variant="secondary"
                           className={
                             job.daysOpen > 14
-                              ? 'bg-red-500/20 text-red-400'
+                              ? 'bg-red-500/10 text-red-400 border border-red-500/20'
                               : job.daysOpen > 7
-                                ? 'bg-amber-500/20 text-amber-400'
-                                : 'bg-blue-500/20 text-blue-400'
+                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                : 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
                           }
                         >
                           {job.daysOpen}d
@@ -276,7 +276,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                 </TableBody>
               </Table>
             ) : (
-              <p className="text-center text-emerald-400 py-12">All active jobs have candidates</p>
+              <p className="text-center text-emerald-400/60 py-12">All active jobs have candidates</p>
             )}
           </CardContent>
         </Card>
@@ -290,20 +290,20 @@ function DashboardSkeleton() {
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
         {Array.from({ length: 5 }).map((_, i) => (
-          <Card key={i} className="border-border/50 bg-card/80">
+          <Card key={i} className="border-white/[0.06] bg-white/[0.02]">
             <CardContent className="p-5 space-y-3">
-              <Skeleton className="h-3 w-20" />
-              <Skeleton className="h-8 w-16" />
-              <Skeleton className="h-3 w-24" />
+              <Skeleton className="h-3 w-20 bg-white/[0.06]" />
+              <Skeleton className="h-8 w-16 bg-white/[0.06]" />
+              <Skeleton className="h-3 w-24 bg-white/[0.06]" />
             </CardContent>
           </Card>
         ))}
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {Array.from({ length: 2 }).map((_, i) => (
-          <Card key={i} className="border-border/50 bg-card/80">
+          <Card key={i} className="border-white/[0.06] bg-white/[0.02]">
             <CardContent className="p-6">
-              <Skeleton className="h-[300px] w-full" />
+              <Skeleton className="h-[300px] w-full bg-white/[0.06]" />
             </CardContent>
           </Card>
         ))}
