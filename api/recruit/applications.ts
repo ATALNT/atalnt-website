@@ -423,6 +423,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dailyVolume: Object.entries(dailyVolume)
           .map(([date, count]) => ({ date, count }))
           .sort((a, b) => a.date.localeCompare(b.date)),
+        _debug: {
+          sampleModifiedTimes: applications.slice(0, 5).map((a) => ({
+            status: a.Application_Status,
+            modified: a.Modified_Time,
+            created: a.Created_Time,
+            parsedModified: new Date(a.Modified_Time).toISOString(),
+            daysSince: daysBetween(new Date(a.Modified_Time), now),
+          })),
+          nowISO: now.toISOString(),
+        },
       },
       timestamp: new Date().toISOString(),
     });
