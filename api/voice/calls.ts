@@ -294,8 +294,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .map(([hour, count]) => ({ hour, count }))
           .sort((a, b) => a.hour.localeCompare(b.hour)),
         dateRange,
-        // Include sample log for debugging (first log only, remove later)
-        _sampleLog: callLogs.length > 0 ? callLogs[0] : null,
       },
       timestamp: new Date().toISOString(),
     });
