@@ -56,7 +56,12 @@ async function getZohoAccessToken(): Promise<string> {
 
 // --- End inlined helpers ---
 
-async function fetchSmsLogs(accessToken: string, from: string, to: string): Promise<any[]> {
+interface SmsResult {
+  logs: any[];
+  debug: string;
+}
+
+async function fetchSmsLogs(accessToken: string, from: string, to: string): Promise<SmsResult> {
   const allLogs: any[] = [];
   let startIndex = 0;
   const pageSize = 200;
@@ -87,18 +92,21 @@ async function fetchSmsLogs(accessToken: string, from: string, to: string): Prom
     });
 
     if (!response.ok) {
-      if (response.status === 204) break;
-      // If SMS scope isn't available, return empty gracefully
-      if (response.status === 401 || response.status === 403) {
-        console.warn('SMS API not authorized - may need ZohoVoice.sms.READ scope');
-        return [];
+      if (response.status === 204) {
+        return { logs: [], debug: `SMS API returned 204 No Content` };
       }
       const errorText = await response.text();
-      console.error(`SMS API error: ${response.status} - ${errorText}`);
-      return [];
+      return { logs: [], debug: `SMS API error ${response.status}: ${errorText.substring(0, 300)}` };
     }
 
     const data = await response.json();
+
+    // First page: log full response keys for debugging
+    if (startIndex === 0 && allLogs.length === 0) {
+      const keys = Object.keys(data);
+      const sampleKeys = data.smsLogQuery?.[0] ? Object.keys(data.smsLogQuery[0]).join(',') : 'no records';
+      console.log(`SMS API response keys: ${keys.join(',')}, record fields: ${sampleKeys}, total: ${data.meta?.total}`);
+    }
 
     if (data.smsLogQuery && Array.isArray(data.smsLogQuery)) {
       allLogs.push(...data.smsLogQuery);
@@ -106,13 +114,14 @@ async function fetchSmsLogs(accessToken: string, from: string, to: string): Prom
       startIndex += pageSize;
       hasMore = startIndex < totalRecords;
     } else {
-      hasMore = false;
+      // Maybe different response structure
+      return { logs: allLogs, debug: `SMS API response keys: ${Object.keys(data).join(',')}, no smsLogQuery array found. Raw: ${JSON.stringify(data).substring(0, 500)}` };
     }
 
     if (startIndex > 5000) break;
   }
 
-  return allLogs;
+  return { logs: allLogs, debug: `OK - fetched ${allLogs.length} SMS records` };
 }
 
 async function fetchCallLogs(accessToken: string, from: string, to: string): Promise<any[]> {
@@ -230,10 +239,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : getDateRange(preset);
 
     const accessToken = await getZohoAccessToken();
-    const [callLogs, smsLogs] = await Promise.all([
+    const [callLogs, smsResult] = await Promise.all([
       fetchCallLogs(accessToken, dateRange.from, dateRange.to),
       fetchSmsLogs(accessToken, dateRange.from, dateRange.to),
     ]);
+    const smsLogs = smsResult.logs;
+    const smsDebug = smsResult.debug;
 
     // Helper to get field value flexibly (Zoho Voice field names)
     function getField(obj: any, ...keys: string[]): string {
@@ -413,6 +424,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .map(([hour, count]) => ({ hour, count }))
           .sort((a, b) => a.hour.localeCompare(b.hour)),
         dateRange,
+        smsDebug,
       },
       timestamp: new Date().toISOString(),
     });
