@@ -1,7 +1,7 @@
 import { Linkedin } from 'lucide-react';
 import nikJainImg from '@/assets/nik-jain.png';
 import kellyBrownImg from '@/assets/kelly-brown.jpg';
-import lavanyaPoosarlaImg from '@/assets/lavanya-poosarla.jpeg';
+import lavanyaThatikondaImg from '@/assets/lavanya-thatikonda.jpeg';
 
 const leaders = [
   {
@@ -21,10 +21,10 @@ const leaders = [
     linkedin: 'https://www.linkedin.com/in/kellydockrell/',
   },
   {
-    name: 'Lavanya Poosarla',
+    name: 'Lavanya Thatikonda',
     role: 'Principal Partner',
     bio: 'Principal Partner and serial entrepreneur with 16+ years scaling organizations and driving workforce growth. Lavanya has grown companies from 50 to 400+ employees, combining technology leadership with recruitment expertise at ATALNT.',
-    image: lavanyaPoosarlaImg,
+    image: lavanyaThatikondaImg,
     objectPosition: 'object-[center_15%] scale-[1.15] origin-top',
     linkedin: 'https://www.linkedin.com/in/lavanyapoosarla/',
   },
