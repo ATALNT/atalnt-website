@@ -161,7 +161,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const accessToken = await getZohoAccessToken();
     const callLogs = await fetchCallLogs(accessToken, dateRange.from, dateRange.to);
 
-    // Helper to get field value flexibly (Zoho Voice field names may vary)
+    // Helper to get field value flexibly (Zoho Voice field names)
     function getField(obj: any, ...keys: string[]): string {
       for (const k of keys) {
         if (obj[k] !== undefined && obj[k] !== null) {
@@ -172,27 +172,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       return '';
     }
-    function getNum(obj: any, ...keys: string[]): number {
-      for (const k of keys) {
-        if (obj[k] !== undefined && obj[k] !== null) return Number(obj[k]) || 0;
+
+    // Parse duration string "MM:SS" or "HH:MM:SS" to seconds
+    function parseDuration(call: any): number {
+      const durStr = call.duration || '';
+      if (typeof durStr === 'string' && durStr.includes(':')) {
+        const parts = durStr.split(':').map(Number);
+        if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        if (parts.length === 2) return parts[0] * 60 + parts[1];
       }
-      return 0;
+      // Fallback: calculate from start_time and end_time (epoch ms)
+      const start = Number(call.start_time || 0);
+      const end = Number(call.end_time || 0);
+      if (start > 0 && end > start) return Math.round((end - start) / 1000);
+      return Number(durStr) || 0;
     }
 
     // Calls by person
     const agentStats: Record<string, { inbound: number; outbound: number; missed: number; totalDuration: number; callCount: number }> = {};
     callLogs.forEach((call) => {
-      const agent = getField(call, 'agent_name', 'agentName', 'Agent_Name', 'user_name', 'userName', 'calledAgent') || 'Unknown';
+      const agent = getField(call, 'agent_number', 'agent_name', 'agentName', 'Agent_Name', 'user_name') || 'Unknown';
       if (!agentStats[agent]) {
         agentStats[agent] = { inbound: 0, outbound: 0, missed: 0, totalDuration: 0, callCount: 0 };
       }
       agentStats[agent].callCount++;
-      agentStats[agent].totalDuration += getNum(call, 'call_duration', 'callDuration', 'duration', 'Duration', 'talkTime');
+      agentStats[agent].totalDuration += parseDuration(call);
 
-      const type = getField(call, 'call_type', 'callType', 'type', 'Type', 'direction', 'callDirection').toLowerCase();
-      const status = getField(call, 'call_status', 'callStatus', 'status', 'Status', 'disposition').toLowerCase();
+      const type = getField(call, 'call_type', 'callType', 'type', 'direction').toLowerCase();
+      const status = getField(call, 'call_status', 'callStatus', 'status', 'disposition', 'hangup_cause').toLowerCase();
 
-      if (status === 'missed' || status === 'no-answer' || status === 'no answer' || status === 'noanswer' || type === 'missed') {
+      if (status === 'missed' || status === 'no-answer' || status === 'no answer' || status === 'noanswer' || status === 'no_answer' || status === 'originator_cancel' || type === 'missed') {
         agentStats[agent].missed++;
       } else if (type.includes('in') || type === 'incoming' || type === 'inbound') {
         agentStats[agent].inbound++;
@@ -216,10 +225,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       dailyVolume[date].total++;
 
-      const type = getField(call, 'call_type', 'callType', 'type', 'Type', 'direction', 'callDirection').toLowerCase();
-      const status = getField(call, 'call_status', 'callStatus', 'status', 'Status', 'disposition').toLowerCase();
+      const type = getField(call, 'call_type', 'callType', 'type', 'direction').toLowerCase();
+      const status = getField(call, 'call_status', 'callStatus', 'status', 'disposition', 'hangup_cause').toLowerCase();
 
-      if (status === 'missed' || status === 'no-answer' || status === 'no answer' || status === 'noanswer' || type === 'missed') {
+      if (status === 'missed' || status === 'no-answer' || status === 'no answer' || status === 'noanswer' || status === 'no_answer' || status === 'originator_cancel' || type === 'missed') {
         dailyVolume[date].missed++;
       } else if (type.includes('in') || type === 'incoming' || type === 'inbound') {
         dailyVolume[date].inbound++;
@@ -244,19 +253,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Overview
     const totalCalls = callLogs.length;
     const inboundCalls = callLogs.filter((c) => {
-      const t = getField(c, 'call_type', 'callType', 'type', 'Type', 'direction', 'callDirection').toLowerCase();
-      return t.includes('in') || t === 'incoming' || t === 'inbound';
+      const t = getField(c, 'call_type', 'callType', 'type', 'direction').toLowerCase();
+      return t === 'incoming' || t === 'inbound';
     }).length;
     const outboundCalls = callLogs.filter((c) => {
-      const t = getField(c, 'call_type', 'callType', 'type', 'Type', 'direction', 'callDirection').toLowerCase();
-      return t.includes('out') || t === 'outgoing' || t === 'outbound';
+      const t = getField(c, 'call_type', 'callType', 'type', 'direction').toLowerCase();
+      return t === 'outgoing' || t === 'outbound';
     }).length;
     const missedCalls = callLogs.filter((c) => {
-      const s = getField(c, 'call_status', 'callStatus', 'status', 'Status', 'disposition').toLowerCase();
-      const t = getField(c, 'call_type', 'callType', 'type', 'Type', 'direction', 'callDirection').toLowerCase();
-      return s === 'missed' || s === 'no-answer' || s === 'no answer' || s === 'noanswer' || t === 'missed';
+      const t = getField(c, 'call_type', 'callType', 'type', 'direction').toLowerCase();
+      return t === 'missed';
     }).length;
-    const totalDuration = callLogs.reduce((sum, c) => sum + getNum(c, 'call_duration', 'callDuration', 'duration', 'Duration', 'talkTime'), 0);
+    const totalDuration = callLogs.reduce((sum, c) => sum + parseDuration(c), 0);
 
     return res.status(200).json({
       success: true,
