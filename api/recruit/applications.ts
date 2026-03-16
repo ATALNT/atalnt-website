@@ -3,8 +3,58 @@
 // ============================================
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getZohoAccessToken, createAuthHeaders } from '../lib/zoho-auth';
-import { verifyDashboardToken, corsHeaders } from '../lib/auth-middleware';
+
+// --- Inlined auth helpers (Vercel ESM can't resolve ../lib imports) ---
+
+function verifyDashboardToken(req: VercelRequest): boolean {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return false;
+  const token = authHeader.split(' ')[1];
+  const secret = process.env.DASHBOARD_SECRET;
+  if (!secret) return false;
+  return token === secret;
+}
+
+interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  api_domain: string;
+}
+
+let cachedToken: { token: string; expiresAt: number } | null = null;
+
+async function getZohoAccessToken(): Promise<string> {
+  if (cachedToken && Date.now() < cachedToken.expiresAt - 60000) {
+    return cachedToken.token;
+  }
+  const clientId = process.env.ZOHO_CLIENT_ID;
+  const clientSecret = process.env.ZOHO_CLIENT_SECRET;
+  const refreshToken = process.env.ZOHO_REFRESH_TOKEN;
+  if (!clientId || !clientSecret || !refreshToken) {
+    throw new Error('Missing Zoho OAuth credentials');
+  }
+  const params = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+  });
+  const response = await fetch('https://accounts.zoho.com/oauth/v2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Zoho OAuth failed: ${response.status} - ${errorText}`);
+  }
+  const data: TokenResponse = await response.json();
+  cachedToken = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 };
+  return data.access_token;
+}
+
+// --- End inlined helpers ---
 
 interface ZohoApplication {
   id: string;
@@ -26,7 +76,10 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
     const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Candidate_Name,Job_Opening,Client_Name,Application_Status,Created_Time,Modified_Time,Assigned_Recruiter&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
 
     const response = await fetch(url, {
-      headers: createAuthHeaders(accessToken),
+      headers: {
+        Authorization: `Zoho-oauthtoken ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
     });
 
     if (!response.ok) {
@@ -41,8 +94,6 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
 
     hasMore = data.info?.more_records ?? false;
     page++;
-
-    // Safety limit
     if (page > 25) break;
   }
 
@@ -60,8 +111,11 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method === 'OPTIONS') return res.status(200).json({});
-  Object.entries(corsHeaders()).forEach(([k, v]) => res.setHeader(k, v));
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   if (!verifyDashboardToken(req)) {
     return res.status(401).json({ error: 'Unauthorized' });
@@ -69,7 +123,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { from, to } = req.query as { from?: string; to?: string };
-    const accessToken = await getZohoAccessToken('recruit');
+    const accessToken = await getZohoAccessToken();
     const applications = await fetchApplications(accessToken, from, to);
 
     // Pipeline by status
@@ -110,21 +164,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dailyVolume[date] = (dailyVolume[date] || 0) + 1;
       });
 
-    // Calc this week and this month submissions
+    // This week and this month stats
     const startOfWeek = new Date(now);
     startOfWeek.setDate(now.getDate() - now.getDay());
     startOfWeek.setHours(0, 0, 0, 0);
-
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const submissionsThisWeek = applications.filter(
       (app) => new Date(app.Created_Time) >= startOfWeek
     ).length;
-
     const submissionsThisMonth = applications.filter(
       (app) => new Date(app.Created_Time) >= startOfMonth
     ).length;
-
     const hiresThisMonth = applications.filter(
       (app) =>
         new Date(app.Created_Time) >= startOfMonth &&
