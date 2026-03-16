@@ -6,9 +6,18 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export const config = {
   api: {
-    bodyParser: true,
+    bodyParser: false,
   },
 };
+
+function readBody(req: VercelRequest): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    req.on('error', reject);
+  });
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
@@ -26,22 +35,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Read body manually if req.body is not available
-    let password: string | undefined;
-
-    try {
-      const body = req.body;
-      password = body?.password;
-    } catch {
-      // If body parsing fails, read raw body
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      }
-      const rawBody = Buffer.concat(chunks).toString('utf-8');
-      const parsed = JSON.parse(rawBody);
-      password = parsed?.password;
-    }
+    const rawBody = await readBody(req);
+    const parsed = JSON.parse(rawBody);
+    const password = parsed?.password;
 
     if (!password) {
       return res.status(400).json({ error: 'Password is required' });
@@ -58,17 +54,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(401).json({ error: 'Invalid password' });
     }
 
-    // Password matched - return token
-    const tokenResponse = {
+    return res.status(200).json({
       token: dashboardSecret,
       expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-    };
-    return res.status(200).json(tokenResponse);
-  } catch (error: any) {
-    console.error('Login error:', error?.message, error?.stack);
-    return res.status(500).json({
-      error: 'Internal server error',
-      debug: error?.message || 'Unknown error',
     });
+  } catch (error: any) {
+    console.error('Login error:', error?.message);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
