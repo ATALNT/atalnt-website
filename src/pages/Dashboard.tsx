@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { DashboardLogin } from '@/components/dashboard/DashboardLogin';
 import { RecruitDashboard } from '@/components/dashboard/RecruitDashboard';
@@ -9,36 +9,69 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { LogOut, RefreshCw, Briefcase, Phone } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
+function getDateRange(preset: string): { from: string; to: string } {
+  const now = new Date();
+  const to = now.toISOString();
+
+  switch (preset) {
+    case 'today': {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return { from: start.toISOString(), to };
+    }
+    case 'this_week': {
+      const start = new Date(now);
+      start.setDate(now.getDate() - now.getDay());
+      start.setHours(0, 0, 0, 0);
+      return { from: start.toISOString(), to };
+    }
+    case 'this_month': {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { from: start.toISOString(), to };
+    }
+    case 'last_7_days': {
+      const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      return { from: start.toISOString(), to };
+    }
+    case 'last_30_days': {
+      const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      return { from: start.toISOString(), to };
+    }
+    default: {
+      const start = new Date(now);
+      start.setDate(now.getDate() - now.getDay());
+      start.setHours(0, 0, 0, 0);
+      return { from: start.toISOString(), to };
+    }
+  }
+}
+
 export default function Dashboard() {
-  // Hide Zoho SalesIQ chat widget on dashboard page
+  // Hide Zoho SalesIQ chat widget via injected CSS - more reliable than DOM manipulation
   useEffect(() => {
-    const hideChat = () => {
-      const chatWidget = document.querySelector('.zsiq_floatmain') as HTMLElement;
-      if (chatWidget) chatWidget.style.display = 'none';
-      // Also try the SalesIQ API
-      if ((window as any).$zoho?.salesiq?.floatwindow) {
-        (window as any).$zoho.salesiq.floatwindow.visible('hide');
+    const style = document.createElement('style');
+    style.id = 'hide-salesiq-dashboard';
+    style.textContent = `
+      .zsiq_floatmain,
+      .zsiq_theme1,
+      .zls-sptwndw,
+      [data-id="zsalesiq"],
+      .zsiq-newtheme {
+        display: none !important;
+        visibility: hidden !important;
       }
-    };
-    // Run immediately and after a delay (widget loads async)
-    hideChat();
-    const timer = setTimeout(hideChat, 2000);
-    const timer2 = setTimeout(hideChat, 5000);
+    `;
+    document.head.appendChild(style);
     return () => {
-      clearTimeout(timer);
-      clearTimeout(timer2);
-      // Show chat widget again when leaving dashboard
-      const chatWidget = document.querySelector('.zsiq_floatmain') as HTMLElement;
-      if (chatWidget) chatWidget.style.display = '';
-      if ((window as any).$zoho?.salesiq?.floatwindow) {
-        (window as any).$zoho.salesiq.floatwindow.visible('show');
-      }
+      style.remove();
     };
   }, []);
+
   const { token, isAuthenticated, login, logout } = useAuth();
   const [datePreset, setDatePreset] = useState('this_week');
   const [activeTab, setActiveTab] = useState('recruit');
   const queryClient = useQueryClient();
+
+  const dateRange = useMemo(() => getDateRange(datePreset), [datePreset]);
 
   if (!isAuthenticated || !token) {
     return <DashboardLogin onLogin={login} />;
@@ -128,7 +161,7 @@ export default function Dashboard() {
           </TabsList>
 
           <TabsContent value="recruit" className="mt-6">
-            <RecruitDashboard token={token} />
+            <RecruitDashboard token={token} datePreset={datePreset} dateRange={dateRange} />
           </TabsContent>
 
           <TabsContent value="voice" className="mt-6">

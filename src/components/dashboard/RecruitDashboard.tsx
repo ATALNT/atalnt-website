@@ -35,9 +35,11 @@ const STATUS_COLORS: Record<string, string> = {
 
 interface RecruitDashboardProps {
   token: string;
+  datePreset: string;
+  dateRange: { from: string; to: string };
 }
 
-export function RecruitDashboard({ token }: RecruitDashboardProps) {
+export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashboardProps) {
   const jobsQuery = useQuery({
     queryKey: ['recruit', 'jobs'],
     queryFn: () => fetchRecruitJobs(token),
@@ -46,8 +48,8 @@ export function RecruitDashboard({ token }: RecruitDashboardProps) {
   });
 
   const appsQuery = useQuery({
-    queryKey: ['recruit', 'applications'],
-    queryFn: () => fetchRecruitApplications(token),
+    queryKey: ['recruit', 'applications', datePreset],
+    queryFn: () => fetchRecruitApplications(token, dateRange.from, dateRange.to),
     refetchInterval: 5 * 60 * 1000,
     staleTime: 2 * 60 * 1000,
   });
@@ -85,26 +87,27 @@ export function RecruitDashboard({ token }: RecruitDashboardProps) {
           accent
         />
         <DashboardCard
-          title="Total Applications"
+          title="Applications"
           value={appsData?.overview?.totalApplications ?? 0}
+          subtitle={datePreset.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
           icon={<Users className="h-5 w-5" />}
         />
         <DashboardCard
-          title="This Week"
-          value={appsData?.overview?.submissionsThisWeek ?? 0}
-          subtitle="Submissions"
+          title="Submissions"
+          value={appsData?.overview?.submissionsThisWeek ?? appsData?.overview?.totalApplications ?? 0}
+          subtitle={datePreset.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
           icon={<Send className="h-5 w-5" />}
         />
         <DashboardCard
-          title="This Month"
-          value={appsData?.overview?.submissionsThisMonth ?? 0}
-          subtitle="Submissions"
+          title="Interviews"
+          value={(appsData?.recruiterPerformance || []).reduce((sum: number, r: any) => sum + r.interviews, 0)}
+          subtitle={datePreset.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
           icon={<Send className="h-5 w-5" />}
         />
         <DashboardCard
           title="Hires"
           value={appsData?.overview?.hiresThisMonth ?? 0}
-          subtitle="This Month"
+          subtitle={datePreset.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
           icon={<Trophy className="h-5 w-5" />}
         />
       </div>
