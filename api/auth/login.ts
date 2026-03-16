@@ -20,16 +20,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Handle body - could be pre-parsed object or string
-    let body = req.body;
-    if (typeof body === 'string') {
-      try { body = JSON.parse(body); } catch { body = {}; }
+    // Try multiple ways to get the password from request body
+    let password: string | undefined;
+
+    // Method 1: req.body already parsed (Vercel default)
+    if (req.body && typeof req.body === 'object' && req.body.password) {
+      password = req.body.password;
     }
-    if (!body || typeof body !== 'object') body = {};
-    const password = body.password;
+    // Method 2: req.body is a string (needs parsing)
+    else if (req.body && typeof req.body === 'string') {
+      try {
+        const parsed = JSON.parse(req.body);
+        password = parsed?.password;
+      } catch {
+        // Not valid JSON string
+      }
+    }
+    // Method 3: Check query params as fallback
+    if (!password && req.query?.password) {
+      password = String(req.query.password);
+    }
 
     if (!password) {
-      return res.status(400).json({ error: 'Password is required' });
+      return res.status(400).json({
+        error: 'Password is required',
+        bodyType: typeof req.body,
+        hasBody: !!req.body,
+      });
     }
 
     const dashboardPassword = process.env.DASHBOARD_PASSWORD;
