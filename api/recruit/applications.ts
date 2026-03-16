@@ -423,10 +423,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dailyVolume: Object.entries(dailyVolume)
           .map(([date, count]) => ({ date, count }))
           .sort((a, b) => a.date.localeCompare(b.date)),
-        _debug: {
-          sampleRawKeys: applications.length > 0 ? Object.keys(applications[0]) : [],
-          sampleRaw: applications.length > 0 ? applications[0] : null,
-        },
+        _debug: await (async () => {
+          try {
+            const debugUrl = 'https://recruit.zoho.com/recruit/v2/Applications?page=1&per_page=1';
+            const debugResp = await fetch(debugUrl, { headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } });
+            if (!debugResp.ok) return { error: `${debugResp.status}` };
+            const debugData = await debugResp.json();
+            const rec = debugData.data?.[0];
+            return { allKeys: rec ? Object.keys(rec) : [], sample: rec };
+          } catch (e) { return { error: String(e) }; }
+        })(),
       },
       timestamp: new Date().toISOString(),
     });
