@@ -122,13 +122,31 @@ function getRejectionCategory(status: string): string | null {
 
 interface ZohoApplication {
   id: string;
-  Candidate_Name: any;
-  Job_Opening: any;
+  Full_Name: string;
+  Job_Opening_Name: string;
   Client_Name: any;
   Application_Status: string;
   Created_Time: string;
-  Modified_Time: string;
-  Assigned_Recruiter: any;
+  Updated_On: string;     // This is the actual "Modified Time" field in Zoho Recruit
+  Last_Activity_Time: string;
+  Application_Owner: any; // The owner/recruiter assigned
+  Account_Manager: any;   // Account manager on the job
+  Assigned_Recruiter: any; // Often empty array
+}
+
+// Get the best recruiter name: prefer Assigned_Recruiter, fall back to Application_Owner
+function getRecruiter(app: ZohoApplication): string {
+  // Assigned_Recruiter can be an array of objects, a single object, or empty
+  const ar = app.Assigned_Recruiter;
+  if (ar) {
+    if (Array.isArray(ar) && ar.length > 0) return zohoStr(ar[0], '');
+    if (typeof ar === 'object' && !Array.isArray(ar)) return zohoStr(ar, '');
+    if (typeof ar === 'string' && ar) return ar;
+  }
+  // Fall back to Application_Owner
+  const owner = app.Application_Owner;
+  if (owner) return zohoStr(owner, 'Unassigned');
+  return 'Unassigned';
 }
 
 async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?: string): Promise<ZohoApplication[]> {
@@ -136,7 +154,7 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Candidate_Name,Job_Opening,Client_Name,Application_Status,Created_Time,Modified_Time,Assigned_Recruiter&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
+    const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Full_Name,Job_Opening_Name,Client_Name,Application_Status,Created_Time,Updated_On,Last_Activity_Time,Application_Owner,Account_Manager,Assigned_Recruiter&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
     const response = await fetch(url, { headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' } });
     if (!response.ok) { if (response.status === 204) break; throw new Error(`Zoho Recruit API error: ${response.status}`); }
     const data = await response.json();
@@ -236,7 +254,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const status = app.Application_Status || '';
       if (!isActiveStatus(status)) return;
 
-      const modified = new Date(app.Modified_Time);
+      const modified = new Date(app.Updated_On);
       const daysInStage = daysBetween(modified, now);
 
       if (!stageVelocity[status]) {
@@ -265,15 +283,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .filter((app) => {
         const status = app.Application_Status || '';
         if (!isActiveStatus(status)) return false;
-        return daysBetween(new Date(app.Modified_Time), now) >= 7;
+        return daysBetween(new Date(app.Updated_On), now) >= 7;
       })
       .map((app) => ({
-        candidateName: zohoStr(app.Candidate_Name),
+        candidateName: app.Full_Name || 'Unknown',
         status: app.Application_Status,
         clientName: zohoStr(app.Client_Name),
-        jobTitle: zohoStr(app.Job_Opening),
-        recruiter: zohoStr(app.Assigned_Recruiter, 'Unassigned'),
-        daysSinceUpdate: daysBetween(new Date(app.Modified_Time), now),
+        jobTitle: app.Job_Opening_Name || 'Unknown',
+        recruiter: getRecruiter(app),
+        daysSinceUpdate: daysBetween(new Date(app.Updated_On), now),
       }))
       .sort((a, b) => b.daysSinceUpdate - a.daysSinceUpdate);
 
@@ -291,7 +309,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }> = {};
 
     applications.forEach((app) => {
-      const recruiter = zohoStr(app.Assigned_Recruiter, 'Unassigned');
+      const recruiter = getRecruiter(app);
       if (!recruiterStats[recruiter]) {
         recruiterStats[recruiter] = { totalCandidates: 0, reachedSubmission: 0, reachedInterview: 0, reachedOffer: 0, hires: 0, rejected: 0, active: 0 };
       }
@@ -423,16 +441,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dailyVolume: Object.entries(dailyVolume)
           .map(([date, count]) => ({ date, count }))
           .sort((a, b) => a.date.localeCompare(b.date)),
-        _debug: await (async () => {
-          try {
-            const debugUrl = 'https://recruit.zoho.com/recruit/v2/Applications?page=1&per_page=1';
-            const debugResp = await fetch(debugUrl, { headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } });
-            if (!debugResp.ok) return { error: `${debugResp.status}` };
-            const debugData = await debugResp.json();
-            const rec = debugData.data?.[0];
-            return { allKeys: rec ? Object.keys(rec) : [], sample: rec };
-          } catch (e) { return { error: String(e) }; }
-        })(),
       },
       timestamp: new Date().toISOString(),
     });
