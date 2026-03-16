@@ -74,15 +74,8 @@ async function fetchSmsLogs(accessToken: string, from: string, to: string): Prom
   const toDate = `${toDt.getFullYear()}${String(toDt.getMonth() + 1).padStart(2, '0')}${String(toDt.getDate()).padStart(2, '0')}`;
 
   while (hasMore) {
-    const params = new URLSearchParams({
-      from: String(startIndex),
-      size: String(pageSize),
-      fromDate,
-      toDate,
-      messageType: 'All',
-    });
-
-    const url = `https://voice.zoho.com/rest/json/v1/sms/logs?${params.toString()}`;
+    // Build URL manually to avoid URLSearchParams encoding issues with date values
+    const url = `https://voice.zoho.com/rest/json/v1/sms/logs?from=${startIndex}&size=${pageSize}&fromDate=${fromDate}&toDate=${toDate}&messageType=All`;
 
     const response = await fetch(url, {
       headers: {
