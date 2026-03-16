@@ -20,8 +20,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Vercel auto-parses JSON body when bodyParser is enabled (default)
-    const password = req.body?.password;
+    // Handle body - could be pre-parsed object or string
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch { body = {}; }
+    }
+    if (!body || typeof body !== 'object') body = {};
+    const password = body.password;
 
     if (!password) {
       return res.status(400).json({ error: 'Password is required' });
