@@ -52,7 +52,7 @@ const LogoItem = ({ partner }: { partner: typeof partners[0] }) => (
 
 export const Partners = () => {
   return (
-    <section className="py-16 bg-background overflow-hidden">
+    <section id="clients" className="py-16 bg-background overflow-hidden">
       {/* Header */}
       <div className="text-center mb-12">
         <p className="text-sm font-medium tracking-widest uppercase text-muted-foreground">

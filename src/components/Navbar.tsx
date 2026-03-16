@@ -6,9 +6,8 @@ import atalntLogo from '@/assets/atalnt-logo-transparent.png';
 
 const navLinks = [
   { label: 'Home', href: '/' },
-  { label: 'Services', href: '/#services' },
-  { label: 'Leadership', href: '/#leadership' },
-  { label: 'Testimonials', href: '/#testimonials' },
+  { label: 'About Us', href: '/about' },
+  { label: 'Clients', href: '/#clients' },
   { label: 'Open Jobs', href: '/jobs' },
 ];
 
