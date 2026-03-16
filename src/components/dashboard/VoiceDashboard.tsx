@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { DashboardCard } from './DashboardCard';
 import { fetchVoiceCalls } from '@/lib/dashboard-api';
-import { Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, Activity, AlertTriangle } from 'lucide-react';
+import { Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, Activity, MessageSquare, MessageSquareText, Send, AlertTriangle } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   AreaChart, Area, LineChart, Line
@@ -14,6 +14,8 @@ const COLORS = {
   outbound: '#3b82f6',
   missed: '#ef4444',
   gold: '#D4A853',
+  smsIn: '#a78bfa',
+  smsOut: '#f472b6',
 };
 
 const TOOLTIP_STYLE = {
@@ -58,7 +60,9 @@ export function VoiceDashboard({ token, datePreset }: VoiceDashboardProps) {
 
   const overview = data?.overview || {};
   const callsByPerson = data?.callsByPerson || [];
+  const smsByPerson = data?.smsByPerson || [];
   const dailyVolume = data?.dailyVolume || [];
+  const dailySmsVolume = data?.dailySmsVolume || [];
   const hourlyLoad = data?.hourlyLoad || [];
 
   const formatDuration = (minutes: number) => {
@@ -70,7 +74,7 @@ export function VoiceDashboard({ token, datePreset }: VoiceDashboardProps) {
 
   return (
     <div className="space-y-6">
-      {/* Overview KPI Cards */}
+      {/* Call KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <DashboardCard
           title="Total Calls"
@@ -102,6 +106,26 @@ export function VoiceDashboard({ token, datePreset }: VoiceDashboardProps) {
           title="Avg Duration"
           value={`${overview.avgCallDuration ?? 0}s`}
           icon={<Activity className="h-5 w-5" />}
+        />
+      </div>
+
+      {/* SMS KPI Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4">
+        <DashboardCard
+          title="Total Texts"
+          value={overview.totalSms ?? 0}
+          icon={<MessageSquare className="h-5 w-5" />}
+          accent
+        />
+        <DashboardCard
+          title="Texts Received"
+          value={overview.inboundSms ?? 0}
+          icon={<MessageSquareText className="h-5 w-5" />}
+        />
+        <DashboardCard
+          title="Texts Sent"
+          value={overview.outboundSms ?? 0}
+          icon={<Send className="h-5 w-5" />}
         />
       </div>
 
@@ -137,6 +161,36 @@ export function VoiceDashboard({ token, datePreset }: VoiceDashboardProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Texts by Person */}
+      {smsByPerson.length > 0 && (
+        <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-purple-500/20 to-transparent" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em]">
+              Texts by Team Member
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={smsByPerson} margin={{ bottom: 20 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis
+                  dataKey="agentName"
+                  stroke="rgba(255,255,255,0.15)"
+                  fontSize={12}
+                  tick={{ fill: 'rgba(255,255,255,0.5)' }}
+                />
+                <YAxis stroke="rgba(255,255,255,0.15)" fontSize={12} tick={{ fill: 'rgba(255,255,255,0.4)' }} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} />
+                <Legend wrapperStyle={{ color: 'rgba(255,255,255,0.5)' }} />
+                <Bar dataKey="outgoing" name="Sent" fill={COLORS.smsOut} stackId="sms" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="incoming" name="Received" fill={COLORS.smsIn} stackId="sms" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Daily Volume & Hourly Load */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -187,89 +241,176 @@ export function VoiceDashboard({ token, datePreset }: VoiceDashboardProps) {
           </CardContent>
         </Card>
 
-        {/* Hourly Call Load */}
+        {/* Daily SMS Volume */}
         <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-500/20 to-transparent" />
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-purple-500/20 to-transparent" />
           <CardHeader className="pb-2">
             <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em]">
-              Hourly Call Distribution
+              Daily Text Volume
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {hourlyLoad.length > 0 ? (
+            {dailySmsVolume.length > 0 ? (
               <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={hourlyLoad}>
+                <AreaChart data={dailySmsVolume}>
                   <defs>
-                    <linearGradient id="goldLine" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#D4A853" stopOpacity={0.5} />
-                      <stop offset="50%" stopColor="#D4A853" stopOpacity={1} />
-                      <stop offset="100%" stopColor="#D4A853" stopOpacity={0.5} />
+                    <linearGradient id="smsOutGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={COLORS.smsOut} stopOpacity={0.25} />
+                      <stop offset="95%" stopColor={COLORS.smsOut} stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="smsInGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={COLORS.smsIn} stopOpacity={0.25} />
+                      <stop offset="95%" stopColor={COLORS.smsIn} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                   <XAxis
-                    dataKey="hour"
+                    dataKey="date"
                     stroke="rgba(255,255,255,0.15)"
                     fontSize={11}
                     tick={{ fill: 'rgba(255,255,255,0.4)' }}
+                    tickFormatter={(d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   />
                   <YAxis stroke="rgba(255,255,255,0.15)" fontSize={12} tick={{ fill: 'rgba(255,255,255,0.4)' }} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Line
-                    type="monotone"
-                    dataKey="count"
-                    name="Calls"
-                    stroke="url(#goldLine)"
-                    strokeWidth={2.5}
-                    dot={{ fill: '#D4A853', r: 3, strokeWidth: 0 }}
-                    activeDot={{ r: 6, fill: '#D4A853', stroke: 'rgba(212,168,83,0.3)', strokeWidth: 4 }}
+                  <Tooltip
+                    contentStyle={TOOLTIP_STYLE}
+                    labelFormatter={(d) => new Date(d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                   />
-                </LineChart>
+                  <Legend wrapperStyle={{ color: 'rgba(255,255,255,0.5)' }} />
+                  <Area type="monotone" dataKey="outgoing" name="Sent" stroke={COLORS.smsOut} fill="url(#smsOutGrad)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="incoming" name="Received" stroke={COLORS.smsIn} fill="url(#smsInGrad)" strokeWidth={2} />
+                </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-center text-white/20 py-12">No hourly data</p>
+              <p className="text-center text-white/20 py-12">No text data for this period</p>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Agent Duration Table */}
+      {/* Hourly Call Distribution */}
       <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D4A853]/20 to-transparent" />
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-500/20 to-transparent" />
         <CardHeader className="pb-2">
           <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em]">
-            Agent Call Details
+            Hourly Call Distribution
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-white/[0.04]">
-                  <th className="text-left py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Agent</th>
-                  <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Outbound</th>
-                  <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Inbound</th>
-                  <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Missed</th>
-                  <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Total Time</th>
-                  <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Avg Duration</th>
-                </tr>
-              </thead>
-              <tbody>
-                {callsByPerson.map((agent: any) => (
-                  <tr key={agent.agentName} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
-                    <td className="py-3 px-2 font-medium text-white/80">{agent.agentName}</td>
-                    <td className="py-3 px-2 text-right text-blue-400 font-semibold">{agent.outbound}</td>
-                    <td className="py-3 px-2 text-right text-emerald-400">{agent.inbound}</td>
-                    <td className="py-3 px-2 text-right text-red-400">{agent.missed}</td>
-                    <td className="py-3 px-2 text-right text-[#D4A853] font-semibold">{formatDuration(agent.totalDuration)}</td>
-                    <td className="py-3 px-2 text-right text-white/30">{agent.avgDuration}s</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {hourlyLoad.length > 0 ? (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={hourlyLoad}>
+                <defs>
+                  <linearGradient id="goldLine" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#D4A853" stopOpacity={0.5} />
+                    <stop offset="50%" stopColor="#D4A853" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#D4A853" stopOpacity={0.5} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis
+                  dataKey="hour"
+                  stroke="rgba(255,255,255,0.15)"
+                  fontSize={11}
+                  tick={{ fill: 'rgba(255,255,255,0.4)' }}
+                />
+                <YAxis stroke="rgba(255,255,255,0.15)" fontSize={12} tick={{ fill: 'rgba(255,255,255,0.4)' }} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} />
+                <Line
+                  type="monotone"
+                  dataKey="count"
+                  name="Calls"
+                  stroke="url(#goldLine)"
+                  strokeWidth={2.5}
+                  dot={{ fill: '#D4A853', r: 3, strokeWidth: 0 }}
+                  activeDot={{ r: 6, fill: '#D4A853', stroke: 'rgba(212,168,83,0.3)', strokeWidth: 4 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <p className="text-center text-white/20 py-12">No hourly data</p>
+          )}
         </CardContent>
       </Card>
+
+      {/* Agent Details Tables */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Agent Call Details */}
+        <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D4A853]/20 to-transparent" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em]">
+              Agent Call Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/[0.04]">
+                    <th className="text-left py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Agent</th>
+                    <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Out</th>
+                    <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">In</th>
+                    <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Missed</th>
+                    <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Time</th>
+                    <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Avg</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {callsByPerson.map((agent: any) => (
+                    <tr key={agent.agentName} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
+                      <td className="py-3 px-2 font-medium text-white/80">{agent.agentName}</td>
+                      <td className="py-3 px-2 text-right text-blue-400 font-semibold">{agent.outbound}</td>
+                      <td className="py-3 px-2 text-right text-emerald-400">{agent.inbound}</td>
+                      <td className="py-3 px-2 text-right text-red-400">{agent.missed}</td>
+                      <td className="py-3 px-2 text-right text-[#D4A853] font-semibold">{formatDuration(agent.totalDuration)}</td>
+                      <td className="py-3 px-2 text-right text-white/30">{agent.avgDuration}s</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Agent Text Details */}
+        <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-purple-500/20 to-transparent" />
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em]">
+              Agent Text Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {smsByPerson.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/[0.04]">
+                      <th className="text-left py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Agent</th>
+                      <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Sent</th>
+                      <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Received</th>
+                      <th className="text-right py-3 px-2 text-white/25 font-medium text-[10px] uppercase tracking-widest">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {smsByPerson.map((agent: any) => (
+                      <tr key={agent.agentName} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
+                        <td className="py-3 px-2 font-medium text-white/80">{agent.agentName}</td>
+                        <td className="py-3 px-2 text-right text-pink-400 font-semibold">{agent.outgoing}</td>
+                        <td className="py-3 px-2 text-right text-purple-400">{agent.incoming}</td>
+                        <td className="py-3 px-2 text-right text-[#D4A853] font-semibold">{agent.total}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-center text-white/20 py-12">No text data for this period</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -279,6 +420,16 @@ function VoiceSkeleton() {
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         {Array.from({ length: 6 }).map((_, i) => (
+          <Card key={i} className="border-white/[0.06] bg-white/[0.02]">
+            <CardContent className="p-5 space-y-3">
+              <Skeleton className="h-3 w-16 bg-white/[0.06]" />
+              <Skeleton className="h-8 w-12 bg-white/[0.06]" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => (
           <Card key={i} className="border-white/[0.06] bg-white/[0.02]">
             <CardContent className="p-5 space-y-3">
               <Skeleton className="h-3 w-16 bg-white/[0.06]" />
