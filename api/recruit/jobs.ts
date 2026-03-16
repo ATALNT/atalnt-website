@@ -54,12 +54,20 @@ async function getZohoAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+// Zoho lookup fields can be either a string or {name, id} object
+function zohoStr(val: any, fallback = 'Unknown'): string {
+  if (!val) return fallback;
+  if (typeof val === 'string') return val;
+  if (typeof val === 'object' && val.name) return val.name;
+  return String(val);
+}
+
 // --- End inlined helpers ---
 
 interface ZohoJobOpening {
   id: string;
   Posting_Title: string;
-  Client_Name: string;
+  Client_Name: any; // Can be string or {name, id} lookup
   Job_Opening_Status: string;
   Number_of_Positions: number;
   Number_of_Associated_Candidates: number;
@@ -123,7 +131,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Aggregate: Jobs by Client
     const jobsByClient: Record<string, { inProgress: number; filled: number; onHold: number; inactive: number; total: number }> = {};
     jobs.forEach((job) => {
-      const client = job.Client_Name || 'Unknown';
+      const client = zohoStr(job.Client_Name);
       if (!jobsByClient[client]) {
         jobsByClient[client] = { inProgress: 0, filled: 0, onHold: 0, inactive: 0, total: 0 };
       }
@@ -152,7 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .map((job) => ({
         jobId: job.id,
         postingTitle: job.Posting_Title,
-        clientName: job.Client_Name || 'Unknown',
+        clientName: zohoStr(job.Client_Name),
         numberOfPositions: job.Number_of_Positions || 1,
         daysOpen: Math.floor((Date.now() - new Date(job.Created_Time).getTime()) / (1000 * 60 * 60 * 24)),
         priority: job.Priority || 'N/A',

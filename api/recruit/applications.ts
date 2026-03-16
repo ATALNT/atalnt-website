@@ -54,17 +54,25 @@ async function getZohoAccessToken(): Promise<string> {
   return data.access_token;
 }
 
+// Zoho lookup fields can be either a string or {name, id} object
+function zohoStr(val: any, fallback = 'Unknown'): string {
+  if (!val) return fallback;
+  if (typeof val === 'string') return val;
+  if (typeof val === 'object' && val.name) return val.name;
+  return String(val);
+}
+
 // --- End inlined helpers ---
 
 interface ZohoApplication {
   id: string;
-  Candidate_Name: { name: string; id: string } | null;
-  Job_Opening: { name: string; id: string } | null;
-  Client_Name: string;
+  Candidate_Name: any;
+  Job_Opening: any;
+  Client_Name: any;
   Application_Status: string;
   Created_Time: string;
   Modified_Time: string;
-  Assigned_Recruiter: { name: string; id: string } | null;
+  Assigned_Recruiter: any;
 }
 
 async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?: string): Promise<ZohoApplication[]> {
@@ -136,7 +144,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Submissions by recruiter
     const recruiterStats: Record<string, { submissions: number; interviews: number; hires: number }> = {};
     applications.forEach((app) => {
-      const recruiter = app.Assigned_Recruiter?.name || 'Unassigned';
+      const recruiter = zohoStr(app.Assigned_Recruiter, 'Unassigned');
       if (!recruiterStats[recruiter]) {
         recruiterStats[recruiter] = { submissions: 0, interviews: 0, hires: 0 };
       }
@@ -149,7 +157,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Applications by client
     const clientApps: Record<string, number> = {};
     applications.forEach((app) => {
-      const client = app.Client_Name || 'Unknown';
+      const client = zohoStr(app.Client_Name);
       clientApps[client] = (clientApps[client] || 0) + 1;
     });
 
