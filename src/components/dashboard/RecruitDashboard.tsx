@@ -8,7 +8,7 @@ import { fetchRecruitJobs, fetchRecruitApplications } from '@/lib/dashboard-api'
 import { Briefcase, Users, Send, Trophy, AlertTriangle } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  Cell
+  Cell, LabelList
 } from 'recharts';
 
 const COLORS = {
@@ -134,22 +134,35 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
           </CardHeader>
           <CardContent>
             {activeJobsByClient.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={activeJobsByClient} layout="vertical" margin={{ left: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis type="number" stroke="rgba(255,255,255,0.15)" fontSize={12} tick={{ fill: 'rgba(255,255,255,0.4)' }} />
-                  <YAxis
-                    type="category"
-                    dataKey="clientName"
-                    stroke="rgba(255,255,255,0.15)"
-                    fontSize={11}
-                    width={120}
-                    tick={{ fill: 'rgba(255,255,255,0.6)' }}
-                  />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Bar dataKey="inProgress" name="In-Progress" fill={COLORS.inProgress} radius={[0, 6, 6, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="space-y-3">
+                {activeJobsByClient.slice(0, 12).map((client: any) => {
+                  const maxJobs = Math.max(...activeJobsByClient.map((c: any) => c.inProgress));
+                  const barWidth = Math.max((client.inProgress / maxJobs) * 100, 8);
+                  return (
+                    <div key={client.clientName} className="group">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm text-white/70 truncate max-w-[200px] group-hover:text-white/90 transition-colors">
+                          {client.clientName}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-white/30">
+                            {client.total} total
+                          </span>
+                          <span className="text-sm font-bold text-[#D4A853] min-w-[24px] text-right">
+                            {client.inProgress}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="h-2 bg-white/[0.04] rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-[#D4A853] to-[#b8912e] rounded-full transition-all duration-500"
+                          style={{ width: `${barWidth}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <p className="text-center text-white/20 py-12">No active jobs</p>
             )}
@@ -166,26 +179,35 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
           </CardHeader>
           <CardContent>
             {(appsData?.pipelineByStatus || []).length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={appsData.pipelineByStatus.slice(0, 10)} margin={{ bottom: 60 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                  <XAxis
-                    dataKey="status"
-                    stroke="rgba(255,255,255,0.15)"
-                    fontSize={10}
-                    angle={-45}
-                    textAnchor="end"
-                    tick={{ fill: 'rgba(255,255,255,0.5)' }}
-                  />
-                  <YAxis stroke="rgba(255,255,255,0.15)" fontSize={12} tick={{ fill: 'rgba(255,255,255,0.4)' }} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} />
-                  <Bar dataKey="count" name="Applications" radius={[6, 6, 0, 0]}>
-                    {appsData.pipelineByStatus.slice(0, 10).map((entry: any, index: number) => (
-                      <Cell key={index} fill={STATUS_COLORS[entry.status] || '#D4A853'} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="space-y-3">
+                {appsData.pipelineByStatus.slice(0, 10).map((entry: any) => {
+                  const maxCount = Math.max(...appsData.pipelineByStatus.map((e: any) => e.count));
+                  const barWidth = Math.max((entry.count / maxCount) * 100, 4);
+                  const color = STATUS_COLORS[entry.status] || '#D4A853';
+                  const label = entry.status.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+                  return (
+                    <div key={entry.status} className="group">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <div className="h-2.5 w-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                          <span className="text-sm text-white/60 group-hover:text-white/80 transition-colors">
+                            {label}
+                          </span>
+                        </div>
+                        <span className="text-sm font-bold text-white/90 min-w-[32px] text-right">
+                          {entry.count}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-white/[0.04] rounded-full overflow-hidden ml-[18px]">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${barWidth}%`, backgroundColor: color, opacity: 0.7 }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
               <p className="text-center text-white/20 py-12">No application data</p>
             )}
