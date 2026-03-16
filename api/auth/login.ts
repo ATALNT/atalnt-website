@@ -58,12 +58,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(401).json({ error: 'Invalid password' });
     }
 
-    return res.status(200).json({
+    // Password matched - return token
+    const tokenResponse = {
       token: dashboardSecret,
       expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-    });
+    };
+    return res.status(200).json(tokenResponse);
   } catch (error: any) {
-    console.error('Login error:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('Login error:', error?.message, error?.stack);
+    return res.status(500).json({
+      error: 'Internal server error',
+      debug: error?.message || 'Unknown error',
+    });
   }
 }
