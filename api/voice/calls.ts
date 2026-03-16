@@ -56,34 +56,30 @@ async function getZohoAccessToken(): Promise<string> {
 
 // --- End inlined helpers ---
 
-interface ZohoVoiceCallLog {
-  id: string;
-  call_type: string;
-  caller_number: string;
-  receiver_number: string;
-  agent_name: string;
-  agent_email: string;
-  queue_name: string;
-  call_duration: number;
-  start_time: string;
-  end_time: string;
-  call_status: string;
-  disposition: string;
-  has_recording: boolean;
-}
-
-async function fetchCallLogs(accessToken: string, from: string, to: string): Promise<ZohoVoiceCallLog[]> {
-  const allLogs: ZohoVoiceCallLog[] = [];
-  let page = 1;
+async function fetchCallLogs(accessToken: string, from: string, to: string): Promise<any[]> {
+  const allLogs: any[] = [];
+  let startIndex = 0;
+  const pageSize = 200;
   let hasMore = true;
 
+  // Format dates as YYYY-MM-DD for Zoho Voice API
+  const fromDate = from.split('T')[0];
+  const toDate = to.split('T')[0];
+
   while (hasMore) {
-    const url = `https://voice.zoho.com/api/v1/calllogs?from_date=${encodeURIComponent(from)}&to_date=${encodeURIComponent(to)}&page=${page}&per_page=200`;
+    const params = new URLSearchParams({
+      from: String(startIndex),
+      size: String(pageSize),
+      fromDate,
+      toDate,
+    });
+
+    const url = `https://voice.zoho.com/rest/json/zv/logs?${params.toString()}`;
 
     const response = await fetch(url, {
       headers: {
         Authorization: `Zoho-oauthtoken ${accessToken}`,
-        'Content-Type': 'application/json',
+        Accept: 'application/json',
       },
     });
 
@@ -94,18 +90,17 @@ async function fetchCallLogs(accessToken: string, from: string, to: string): Pro
     }
 
     const data = await response.json();
-    if (data.data && Array.isArray(data.data)) {
-      allLogs.push(...data.data);
-      hasMore = data.data.length === 200;
-    } else if (data.call_logs && Array.isArray(data.call_logs)) {
-      allLogs.push(...data.call_logs);
-      hasMore = data.call_logs.length === 200;
+
+    if (data.logs && Array.isArray(data.logs)) {
+      allLogs.push(...data.logs);
+      const totalRecords = data.meta?.total || 0;
+      startIndex += pageSize;
+      hasMore = startIndex < totalRecords;
     } else {
       hasMore = false;
     }
 
-    page++;
-    if (page > 50) break;
+    if (startIndex > 5000) break; // Safety limit
   }
 
   return allLogs;
@@ -166,24 +161,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const accessToken = await getZohoAccessToken();
     const callLogs = await fetchCallLogs(accessToken, dateRange.from, dateRange.to);
 
+    // Helper to get field value flexibly (Zoho Voice field names may vary)
+    function getField(obj: any, ...keys: string[]): string {
+      for (const k of keys) {
+        if (obj[k] !== undefined && obj[k] !== null) {
+          const val = obj[k];
+          if (typeof val === 'object' && val.name) return val.name;
+          return String(val);
+        }
+      }
+      return '';
+    }
+    function getNum(obj: any, ...keys: string[]): number {
+      for (const k of keys) {
+        if (obj[k] !== undefined && obj[k] !== null) return Number(obj[k]) || 0;
+      }
+      return 0;
+    }
+
     // Calls by person
     const agentStats: Record<string, { inbound: number; outbound: number; missed: number; totalDuration: number; callCount: number }> = {};
     callLogs.forEach((call) => {
-      const agent = call.agent_name || 'Unknown';
+      const agent = getField(call, 'agent_name', 'agentName', 'Agent_Name', 'user_name', 'userName', 'calledAgent') || 'Unknown';
       if (!agentStats[agent]) {
         agentStats[agent] = { inbound: 0, outbound: 0, missed: 0, totalDuration: 0, callCount: 0 };
       }
       agentStats[agent].callCount++;
-      agentStats[agent].totalDuration += call.call_duration || 0;
+      agentStats[agent].totalDuration += getNum(call, 'call_duration', 'callDuration', 'duration', 'Duration', 'talkTime');
 
-      const type = (call.call_type || '').toLowerCase();
-      const status = (call.call_status || '').toLowerCase();
+      const type = getField(call, 'call_type', 'callType', 'type', 'Type', 'direction', 'callDirection').toLowerCase();
+      const status = getField(call, 'call_status', 'callStatus', 'status', 'Status', 'disposition').toLowerCase();
 
-      if (status === 'missed' || status === 'no-answer' || status === 'no answer') {
+      if (status === 'missed' || status === 'no-answer' || status === 'no answer' || status === 'noanswer' || type === 'missed') {
         agentStats[agent].missed++;
-      } else if (type === 'incoming' || type === 'inbound') {
+      } else if (type.includes('in') || type === 'incoming' || type === 'inbound') {
         agentStats[agent].inbound++;
-      } else if (type === 'outgoing' || type === 'outbound') {
+      } else if (type.includes('out') || type === 'outgoing' || type === 'outbound') {
         agentStats[agent].outbound++;
       }
     });
@@ -191,20 +204,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Daily call volume
     const dailyVolume: Record<string, { inbound: number; outbound: number; missed: number; total: number }> = {};
     callLogs.forEach((call) => {
-      const date = (call.start_time || '').split('T')[0] || 'Unknown';
+      const timeStr = getField(call, 'start_time', 'startTime', 'Start_Time', 'callTime', 'createdTime', 'created_time');
+      let date = 'Unknown';
+      if (timeStr) {
+        // Handle epoch ms or ISO string
+        const parsed = Number(timeStr) > 1e12 ? new Date(Number(timeStr)) : new Date(timeStr);
+        if (!isNaN(parsed.getTime())) date = parsed.toISOString().split('T')[0];
+      }
       if (!dailyVolume[date]) {
         dailyVolume[date] = { inbound: 0, outbound: 0, missed: 0, total: 0 };
       }
       dailyVolume[date].total++;
 
-      const type = (call.call_type || '').toLowerCase();
-      const status = (call.call_status || '').toLowerCase();
+      const type = getField(call, 'call_type', 'callType', 'type', 'Type', 'direction', 'callDirection').toLowerCase();
+      const status = getField(call, 'call_status', 'callStatus', 'status', 'Status', 'disposition').toLowerCase();
 
-      if (status === 'missed' || status === 'no-answer' || status === 'no answer') {
+      if (status === 'missed' || status === 'no-answer' || status === 'no answer' || status === 'noanswer' || type === 'missed') {
         dailyVolume[date].missed++;
-      } else if (type === 'incoming' || type === 'inbound') {
+      } else if (type.includes('in') || type === 'incoming' || type === 'inbound') {
         dailyVolume[date].inbound++;
-      } else if (type === 'outgoing' || type === 'outbound') {
+      } else if (type.includes('out') || type === 'outgoing' || type === 'outbound') {
         dailyVolume[date].outbound++;
       }
     });
@@ -212,20 +231,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Hourly call load
     const hourlyLoad: Record<string, number> = {};
     callLogs.forEach((call) => {
-      const hour = new Date(call.start_time).getHours();
-      const hourKey = `${hour.toString().padStart(2, '0')}:00`;
-      hourlyLoad[hourKey] = (hourlyLoad[hourKey] || 0) + 1;
+      const timeStr = getField(call, 'start_time', 'startTime', 'Start_Time', 'callTime', 'createdTime', 'created_time');
+      if (timeStr) {
+        const parsed = Number(timeStr) > 1e12 ? new Date(Number(timeStr)) : new Date(timeStr);
+        if (!isNaN(parsed.getTime())) {
+          const hourKey = `${parsed.getHours().toString().padStart(2, '0')}:00`;
+          hourlyLoad[hourKey] = (hourlyLoad[hourKey] || 0) + 1;
+        }
+      }
     });
 
     // Overview
     const totalCalls = callLogs.length;
-    const inboundCalls = callLogs.filter((c) => (c.call_type || '').toLowerCase().includes('in')).length;
-    const outboundCalls = callLogs.filter((c) => (c.call_type || '').toLowerCase().includes('out')).length;
-    const missedCalls = callLogs.filter((c) => {
-      const s = (c.call_status || '').toLowerCase();
-      return s === 'missed' || s === 'no-answer' || s === 'no answer';
+    const inboundCalls = callLogs.filter((c) => {
+      const t = getField(c, 'call_type', 'callType', 'type', 'Type', 'direction', 'callDirection').toLowerCase();
+      return t.includes('in') || t === 'incoming' || t === 'inbound';
     }).length;
-    const totalDuration = callLogs.reduce((sum, c) => sum + (c.call_duration || 0), 0);
+    const outboundCalls = callLogs.filter((c) => {
+      const t = getField(c, 'call_type', 'callType', 'type', 'Type', 'direction', 'callDirection').toLowerCase();
+      return t.includes('out') || t === 'outgoing' || t === 'outbound';
+    }).length;
+    const missedCalls = callLogs.filter((c) => {
+      const s = getField(c, 'call_status', 'callStatus', 'status', 'Status', 'disposition').toLowerCase();
+      const t = getField(c, 'call_type', 'callType', 'type', 'Type', 'direction', 'callDirection').toLowerCase();
+      return s === 'missed' || s === 'no-answer' || s === 'no answer' || s === 'noanswer' || t === 'missed';
+    }).length;
+    const totalDuration = callLogs.reduce((sum, c) => sum + getNum(c, 'call_duration', 'callDuration', 'duration', 'Duration', 'talkTime'), 0);
 
     return res.status(200).json({
       success: true,
@@ -255,6 +286,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .map(([hour, count]) => ({ hour, count }))
           .sort((a, b) => a.hour.localeCompare(b.hour)),
         dateRange,
+        // Include sample log for debugging (first log only, remove later)
+        _sampleLog: callLogs.length > 0 ? callLogs[0] : null,
       },
       timestamp: new Date().toISOString(),
     });
