@@ -36,6 +36,18 @@ function getDateRange(preset: string): { from: string; to: string } {
       const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       return { from: start.toISOString(), to };
     }
+    case 'this_quarter': {
+      const qMonth = Math.floor(now.getMonth() / 3) * 3;
+      const start = new Date(now.getFullYear(), qMonth, 1);
+      return { from: start.toISOString(), to };
+    }
+    case 'last_90_days': {
+      const start = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      return { from: start.toISOString(), to };
+    }
+    case 'all_time': {
+      return { from: '2020-01-01T00:00:00.000Z', to };
+    }
     default: {
       const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       return { from: start.toISOString(), to };
@@ -116,15 +128,18 @@ export default function Dashboard() {
           <div className="flex items-center gap-3">
             {/* Date Preset Selector */}
             <Select value={datePreset} onValueChange={setDatePreset}>
-              <SelectTrigger className="w-[160px] bg-white/[0.03] border-white/[0.08] text-sm text-white/80 hover:border-[#D4A853]/30 transition-colors">
+              <SelectTrigger className="w-[180px] bg-white/[0.04] border-white/[0.08] text-sm text-white/80 hover:border-[#D4A853]/30 hover:bg-white/[0.06] transition-all rounded-lg h-9">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-[#12131a] border-white/10">
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="this_week">This Week</SelectItem>
-                <SelectItem value="this_month">This Month</SelectItem>
-                <SelectItem value="last_7_days">Last 7 Days</SelectItem>
-                <SelectItem value="last_30_days">Last 30 Days</SelectItem>
+              <SelectContent className="bg-[#12131a] border-white/[0.08] backdrop-blur-xl rounded-lg shadow-2xl shadow-black/40">
+                <SelectItem value="today" className="text-white/70 focus:bg-[#D4A853]/10 focus:text-white">Today</SelectItem>
+                <SelectItem value="this_week" className="text-white/70 focus:bg-[#D4A853]/10 focus:text-white">This Week</SelectItem>
+                <SelectItem value="last_7_days" className="text-white/70 focus:bg-[#D4A853]/10 focus:text-white">Last 7 Days</SelectItem>
+                <SelectItem value="this_month" className="text-white/70 focus:bg-[#D4A853]/10 focus:text-white">This Month</SelectItem>
+                <SelectItem value="last_30_days" className="text-white/70 focus:bg-[#D4A853]/10 focus:text-white">Last 30 Days</SelectItem>
+                <SelectItem value="this_quarter" className="text-white/70 focus:bg-[#D4A853]/10 focus:text-white">This Quarter</SelectItem>
+                <SelectItem value="last_90_days" className="text-white/70 focus:bg-[#D4A853]/10 focus:text-white">Last 90 Days</SelectItem>
+                <SelectItem value="all_time" className="text-white/70 focus:bg-[#D4A853]/10 focus:text-white">All Time</SelectItem>
               </SelectContent>
             </Select>
 
