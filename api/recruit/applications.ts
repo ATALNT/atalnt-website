@@ -143,7 +143,10 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
 }
 
 function daysBetween(date1: Date, date2: Date): number {
-  return Math.floor(Math.abs(date2.getTime() - date1.getTime()) / (1000 * 60 * 60 * 24));
+  const t1 = date1.getTime();
+  const t2 = date2.getTime();
+  if (isNaN(t1) || isNaN(t2)) return 0; // Guard against invalid dates
+  return Math.floor(Math.abs(t2 - t1) / (1000 * 60 * 60 * 24));
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
