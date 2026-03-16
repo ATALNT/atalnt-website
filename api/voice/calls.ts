@@ -67,9 +67,11 @@ async function fetchSmsLogs(accessToken: string, from: string, to: string): Prom
   const pageSize = 200;
   let hasMore = true;
 
-  // SMS API uses YYYY-MM-DD format (same as call logs)
-  const fromDate = from.split('T')[0];
-  const toDate = to.split('T')[0];
+  // SMS API uses yyyymmdd format (no separators, no time)
+  const fromDt = new Date(from);
+  const toDt = new Date(to);
+  const fromDate = `${fromDt.getFullYear()}${String(fromDt.getMonth() + 1).padStart(2, '0')}${String(fromDt.getDate()).padStart(2, '0')}`;
+  const toDate = `${toDt.getFullYear()}${String(toDt.getMonth() + 1).padStart(2, '0')}${String(toDt.getDate()).padStart(2, '0')}`;
 
   while (hasMore) {
     const params = new URLSearchParams({
