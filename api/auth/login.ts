@@ -42,11 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!password) {
-      return res.status(400).json({
-        error: 'Password is required',
-        bodyType: typeof req.body,
-        hasBody: !!req.body,
-      });
+      return res.status(400).json({ error: 'Password is required' });
     }
 
     const dashboardPassword = process.env.DASHBOARD_PASSWORD;
@@ -66,6 +62,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (error: any) {
     console.error('Login error:', error?.message, error?.stack);
-    return res.status(500).json({ error: 'Internal server error', debug: error?.message });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
