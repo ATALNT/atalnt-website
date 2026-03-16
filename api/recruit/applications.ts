@@ -54,11 +54,13 @@ async function getZohoAccessToken(): Promise<string> {
   return data.access_token;
 }
 
-// Zoho lookup fields can be either a string or {name, id} object
+// Zoho lookup fields can be string, {name,id}, {display_value,...}, etc.
 function zohoStr(val: any, fallback = 'Unknown'): string {
   if (!val) return fallback;
   if (typeof val === 'string') return val;
-  if (typeof val === 'object' && val.name) return val.name;
+  if (typeof val === 'object') {
+    return val.name || val.display_value || val.full_name || val.first_name || JSON.stringify(val);
+  }
   return String(val);
 }
 
