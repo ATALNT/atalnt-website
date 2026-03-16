@@ -43,7 +43,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       expiresAt: Date.now() + 24 * 60 * 60 * 1000,
     });
   } catch (error: any) {
-    console.error('Login error:', error?.message);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('Login error:', error?.message, error?.stack);
+    return res.status(500).json({ error: 'Internal server error', debug: error?.message });
   }
 }
