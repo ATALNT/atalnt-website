@@ -424,20 +424,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .map(([date, count]) => ({ date, count }))
           .sort((a, b) => a.date.localeCompare(b.date)),
         _debug: {
-          sampleModifiedTimes: applications.slice(0, 10).map((a) => {
-            const mt = a.Modified_Time;
-            const parsed = mt ? new Date(mt) : null;
-            return {
-              status: a.Application_Status,
-              modified: mt,
-              modifiedType: typeof mt,
-              parsedValid: parsed ? !isNaN(parsed.getTime()) : false,
-              daysSince: parsed && !isNaN(parsed.getTime()) ? daysBetween(parsed, now) : 'INVALID',
-            };
-          }),
-          nowISO: now.toISOString(),
-          activeWithNullModified: applications.filter((a) => isActiveStatus(a.Application_Status || '') && !a.Modified_Time).length,
-          activeTotal: applications.filter((a) => isActiveStatus(a.Application_Status || '')).length,
+          sampleRawKeys: applications.length > 0 ? Object.keys(applications[0]) : [],
+          sampleRaw: applications.length > 0 ? applications[0] : null,
         },
       },
       timestamp: new Date().toISOString(),
