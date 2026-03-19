@@ -13,6 +13,11 @@ import Terms from "./pages/Terms";
 import About from "./pages/About";
 import NotFound from "./pages/NotFound";
 import Dashboard from "./pages/Dashboard";
+import Portal from "./pages/Portal";
+import PortalDashboard from "./pages/PortalDashboard";
+import PortalCandidate from "./pages/PortalCandidate";
+import PortalAdmin from "./pages/PortalAdmin";
+import PortalAdminNewCandidate from "./pages/PortalAdminNewCandidate";
 
 const queryClient = new QueryClient();
 
@@ -33,6 +38,12 @@ const App = () => (
           <Route path="/about" element={<About />} />
           <Route path="/db" element={<Dashboard />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/portal" element={<Portal />} />
+          <Route path="/portal/dashboard" element={<PortalDashboard />} />
+          <Route path="/portal/candidate/:id" element={<PortalCandidate />} />
+          <Route path="/portal/admin" element={<PortalAdmin />} />
+          <Route path="/portal/admin/new" element={<PortalAdminNewCandidate />} />
+          <Route path="/portal/admin/candidate/:id" element={<PortalCandidate />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
