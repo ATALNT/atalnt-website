@@ -189,6 +189,7 @@ const ROICalculator = () => {
       'Name_Last': lastName,
       'Email': leadEmail,
       'PhoneNumber_countrycode': leadPhone,
+      'SingleLine4': leadTitle,
       'SingleLine': leadCompany,
       'SingleLine1': currentIndustry?.label ?? industry,
       'SingleLine2': employees,
