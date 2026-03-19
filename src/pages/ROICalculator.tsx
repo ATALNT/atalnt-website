@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Navbar } from '@/components/Navbar';
 import { Footer } from '@/components/Footer';
 import { Button } from '@/components/ui/button';
@@ -10,119 +10,63 @@ import {
   DollarSign,
   TrendingUp,
   CalendarDays,
-  Table2,
-  MessageSquare,
-  BarChart3,
-  CreditCard,
-  Search,
-  CalendarCheck,
   CheckCircle2,
   Sparkles,
   Users,
   Zap,
+  AlertTriangle,
+  UserCog,
+  Lightbulb,
 } from 'lucide-react';
-
-const industries = [
-  { value: 'logistics', label: 'Logistics & Supply Chain' },
-  { value: 'healthcare', label: 'Healthcare' },
-  { value: 'finance', label: 'Finance & Accounting' },
-  { value: 'realestate', label: 'Real Estate' },
-  { value: 'retail', label: 'Retail & E-commerce' },
-  { value: 'manufacturing', label: 'Manufacturing' },
-  { value: 'professional', label: 'Professional Services' },
-  { value: 'staffing', label: 'Staffing & Recruiting' },
-  { value: 'other', label: 'Other' },
-];
-
-const employeeRanges = [
-  { value: '1-5', label: '1-5 employees' },
-  { value: '6-15', label: '6-15 employees' },
-  { value: '16-50', label: '16-50 employees' },
-  { value: '51-100', label: '51-100 employees' },
-  { value: '101-250', label: '101-250 employees' },
-  { value: '250+', label: '250+ employees' },
-];
-
-const revenueRanges = [
-  { value: 'under500k', label: 'Under $500K' },
-  { value: '500k-1m', label: '$500K - $1M' },
-  { value: '1m-5m', label: '$1M - $5M' },
-  { value: '5m-10m', label: '$5M - $10M' },
-  { value: '10m+', label: '$10M+' },
-];
-
-const workflows = [
-  {
-    id: 'data-entry',
-    icon: Table2,
-    title: 'Data Entry & Processing',
-    description: 'Manual data input, spreadsheet management, copy-pasting between systems',
-    hours: 12,
-  },
-  {
-    id: 'customer-service',
-    icon: MessageSquare,
-    title: 'Customer Communication',
-    description: 'Email responses, follow-ups, scheduling, and client onboarding',
-    hours: 15,
-  },
-  {
-    id: 'reporting',
-    icon: BarChart3,
-    title: 'Reporting & Analytics',
-    description: 'Creating reports, pulling metrics, dashboards, and performance tracking',
-    hours: 8,
-  },
-  {
-    id: 'invoicing',
-    icon: CreditCard,
-    title: 'Invoicing & Billing',
-    description: 'Invoice generation, payment tracking, reconciliation, and follow-ups',
-    hours: 6,
-  },
-  {
-    id: 'lead-gen',
-    icon: Search,
-    title: 'Lead Generation & Sales',
-    description: 'Prospecting, lead qualification, CRM updates, and pipeline management',
-    hours: 10,
-  },
-  {
-    id: 'scheduling',
-    icon: CalendarCheck,
-    title: 'Scheduling & Coordination',
-    description: 'Appointment booking, team coordination, calendar management',
-    hours: 5,
-  },
-];
+import { industryConfigs, employeeRanges, monthlyInvestmentBySize } from '@/data/industryData';
 
 function formatNumber(num: number) {
   return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
+interface EnhancedResults {
+  annualSavings: number;
+  monthlySavings: number;
+  timeSavedPerWeek: number;
+  roiPercent: number;
+  paybackMonths: number;
+  errorCostSavings: number;
+  costOfWaiting: number;
+  industryBenchmark: number;
+  recommendations: {
+    name: string;
+    description: string;
+    hoursPerWeek: number;
+    annualSavings: number;
+    priority: number;
+    errorReduction: number;
+  }[];
+}
+
+const UPSELL_THRESHOLD = 75000;
+
 const ROICalculator = () => {
   const [step, setStep] = useState(1);
   const [industry, setIndustry] = useState('');
   const [employees, setEmployees] = useState('');
-  const [avgSalary, setAvgSalary] = useState(35);
-  const [revenue, setRevenue] = useState('');
   const [selectedWorkflows, setSelectedWorkflows] = useState<string[]>([]);
   const [manualHours, setManualHours] = useState(40);
-  const [results, setResults] = useState<null | {
-    annualSavings: number;
-    monthlySavings: number;
-    timeSaved: number;
-    roiPercent: number;
-    paybackMonths: number;
-    recommendations: { name: string; desc: string; hours: number; savings: number }[];
-  }>(null);
+  const [results, setResults] = useState<EnhancedResults | null>(null);
 
   // Lead form
   const [leadName, setLeadName] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
   const [leadCompany, setLeadCompany] = useState('');
+  const [leadTitle, setLeadTitle] = useState('');
   const [leadPhone, setLeadPhone] = useState('');
   const [submitted, setSubmitted] = useState(false);
+
+  const currentIndustry = useMemo(
+    () => industryConfigs.find((c) => c.value === industry),
+    [industry]
+  );
+
+  const currentWorkflows = currentIndustry?.workflows ?? [];
 
   const toggleWorkflow = (id: string) => {
     setSelectedWorkflows((prev) =>
@@ -130,11 +74,15 @@ const ROICalculator = () => {
     );
   };
 
+  const handleIndustryChange = (value: string) => {
+    setIndustry(value);
+    setSelectedWorkflows([]);
+  };
+
   const goToStep = (s: number) => {
     if (s === 2 && (!industry || !employees)) return;
     setStep(s);
     if (s === 3) calculateROI();
-    // Scroll to the calculator section, not the top of the page
     setTimeout(() => {
       const calcSection = document.getElementById('calculator-section');
       if (calcSection) {
@@ -144,53 +92,61 @@ const ROICalculator = () => {
   };
 
   const calculateROI = () => {
-    const selected = workflows.filter((w) => selectedWorkflows.includes(w.id));
-    let workflowHours = selected.reduce((sum, w) => sum + w.hours, 0);
+    if (!currentIndustry) return;
+
+    const avgRate = currentIndustry.avgHourlyRate;
+    const selected = currentWorkflows.filter((w) => selectedWorkflows.includes(w.id));
+    const workflowHours = selected.reduce((sum, w) => sum + w.hoursPerWeek, 0);
 
     const effectiveHoursSaved =
       workflowHours > 0
         ? Math.min(workflowHours, manualHours * 0.8)
         : manualHours * 0.3;
 
-    const weeklySavings = effectiveHoursSaved * avgSalary;
+    const weeklySavings = effectiveHoursSaved * avgRate;
     const monthlySavings = weeklySavings * 4.33;
     const annualSavings = monthlySavings * 12;
 
-    let monthlyInvestment: number;
-    switch (employees) {
-      case '1-5': monthlyInvestment = 200; break;
-      case '6-15': monthlyInvestment = 450; break;
-      case '16-50': monthlyInvestment = 800; break;
-      case '51-100': monthlyInvestment = 1500; break;
-      case '101-250': monthlyInvestment = 3000; break;
-      case '250+': monthlyInvestment = 5000; break;
-      default: monthlyInvestment = 500;
-    }
+    // Error cost savings (rework, corrections = 15% on top)
+    const errorCostSavings = Math.round(annualSavings * 0.15);
+    const totalAnnualSavings = Math.round(annualSavings + errorCostSavings);
 
+    const monthlyInvestment = monthlyInvestmentBySize[employees] ?? 500;
     const annualInvestment = monthlyInvestment * 12;
-    const roiPercent = Math.round(((annualSavings - annualInvestment) / annualInvestment) * 100);
-    const paybackMonths = monthlySavings > 0 ? Math.max(1, Math.round((monthlyInvestment / monthlySavings) * 2)) : 0;
+    const roiPercent = Math.round(((totalAnnualSavings - annualInvestment) / annualInvestment) * 100);
+    const paybackMonths = monthlySavings > 0 ? Math.max(1, Math.round((monthlyInvestment / (monthlySavings * 1.15)) * 2)) : 0;
+
+    const costOfWaiting = Math.round(totalAnnualSavings / 4);
 
     const recommendations = selected.length > 0
-      ? selected.map((w) => ({
-          name: w.title,
-          desc: w.description,
-          hours: w.hours,
-          savings: Math.round(w.hours * avgSalary * 4.33 * 12),
-        }))
+      ? selected
+          .map((w) => ({
+            name: w.title,
+            description: w.description,
+            hoursPerWeek: w.hoursPerWeek,
+            annualSavings: Math.round(w.hoursPerWeek * avgRate * 4.33 * 12 * 1.15),
+            priority: w.priority,
+            errorReduction: w.errorReductionPercent,
+          }))
+          .sort((a, b) => a.priority - b.priority)
       : [{
           name: 'Custom AI Workflow Analysis',
-          desc: 'Book a strategy session to identify the highest-impact AI workflows for your specific business.',
-          hours: Math.round(effectiveHoursSaved),
-          savings: Math.round(annualSavings),
+          description: 'Book a strategy session to identify the highest-impact AI workflows for your specific business.',
+          hoursPerWeek: Math.round(effectiveHoursSaved),
+          annualSavings: totalAnnualSavings,
+          priority: 1,
+          errorReduction: 80,
         }];
 
     setResults({
-      annualSavings: Math.round(annualSavings),
-      monthlySavings: Math.round(monthlySavings),
-      timeSaved: Math.round(effectiveHoursSaved),
+      annualSavings: totalAnnualSavings,
+      monthlySavings: Math.round(monthlySavings * 1.15),
+      timeSavedPerWeek: Math.round(effectiveHoursSaved),
       roiPercent,
       paybackMonths,
+      errorCostSavings,
+      costOfWaiting,
+      industryBenchmark: currentIndustry.benchmarkSavingsPercent,
       recommendations,
     });
   };
@@ -198,8 +154,6 @@ const ROICalculator = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Submit to Zoho Forms using hidden iframe approach
-    // This bypasses CSRF protection that blocks fetch/AJAX requests
     const iframeName = 'zoho_form_submit_iframe';
     let iframe = document.getElementById(iframeName) as HTMLIFrameElement;
     if (!iframe) {
@@ -214,7 +168,11 @@ const ROICalculator = () => {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
 
-    // Create a real HTML form and submit it targeting the hidden iframe
+    // Build rich workflow details for submission
+    const workflowDetails = results?.recommendations
+      .map((r) => `${r.name} (${r.hoursPerWeek} hrs/wk, $${formatNumber(r.annualSavings)}/yr)`)
+      .join('; ') ?? '';
+
     const form = document.createElement('form');
     form.method = 'POST';
     form.action = 'https://forms.zohopublic.com/atalnt1/form/ROICalculatorLeadCapture/formperma/HPwyHwt7nxNA-qBRiUnrghDyNoVH1Nh8ymoiTGJEgl4/htmlRecords/submit';
@@ -232,10 +190,10 @@ const ROICalculator = () => {
       'Email': leadEmail,
       'PhoneNumber_countrycode': leadPhone,
       'SingleLine': leadCompany,
-      'SingleLine1': industry,
-      'SingleLine2': String(employees),
-      'SingleLine3': results?.annualSavings ? `$${results.annualSavings.toLocaleString()}` : '',
-      'MultiLine': selectedWorkflows.join(', '),
+      'SingleLine1': currentIndustry?.label ?? industry,
+      'SingleLine2': employees,
+      'SingleLine3': results?.annualSavings ? `$${formatNumber(results.annualSavings)}` : '',
+      'MultiLine': workflowDetails,
     };
 
     Object.entries(fields).forEach(([name, value]) => {
@@ -249,12 +207,10 @@ const ROICalculator = () => {
     document.body.appendChild(form);
     form.submit();
 
-    // Clean up the form element after submission
     setTimeout(() => {
       document.body.removeChild(form);
     }, 1000);
 
-    // Track conversion in Zoho PageSense
     (window as any).pagesense = (window as any).pagesense || [];
     (window as any).pagesense.push(['trackEvent', 'roi_lead_submit']);
 
@@ -279,7 +235,7 @@ const ROICalculator = () => {
             <br />Can Save Your Business
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10 animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            Small and mid-size businesses are saving 20-40% on operational costs with AI automation. Calculate your personalized ROI in under 2 minutes.
+            Get a personalized AI automation roadmap tailored to your industry. Calculate your savings in under 2 minutes.
           </p>
           <div className="flex flex-wrap justify-center gap-8 animate-fade-in" style={{ animationDelay: '0.4s' }}>
             {[
@@ -307,9 +263,9 @@ const ROICalculator = () => {
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {[
-              { icon: Calculator, num: '01', title: 'Calculate Your ROI', desc: 'Use our interactive calculator to see exactly how much time and money AI workflows can save your specific business.' },
-              { icon: Users, num: '02', title: 'Strategy Session', desc: 'Meet with our AI specialists to map out the highest-impact workflows for your unique operations and goals.' },
-              { icon: Zap, num: '03', title: 'Launch & Scale', desc: 'We implement, train your team, and continuously optimize your AI workflows to maximize results.' },
+              { icon: Calculator, num: '01', title: 'Tell Us About Your Business', desc: 'Select your industry and team size. We\'ll show you the exact workflows AI can automate in your vertical.' },
+              { icon: Users, num: '02', title: 'Pick Your Pain Points', desc: 'Choose the manual tasks eating up your team\'s time. We\'ll calculate exactly how much each one costs you.' },
+              { icon: Zap, num: '03', title: 'Get Your AI Roadmap', desc: 'See your personalized savings estimate and a prioritized automation plan built for your industry.' },
             ].map((item, i) => (
               <div key={item.num} className="group relative p-8 rounded-2xl bg-gradient-card border border-border hover:border-gold/50 transition-all duration-500" style={{ animationDelay: `${i * 100}ms` }}>
                 <div className="absolute inset-0 bg-gradient-to-br from-gold/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl" />
@@ -338,7 +294,7 @@ const ROICalculator = () => {
             <h2 className="font-display text-4xl md:text-5xl font-bold mt-4 mb-6">
               Calculate Your <span className="text-gradient-gold">AI Savings</span>
             </h2>
-            <p className="text-muted-foreground text-lg">Answer a few questions about your business and see your personalized ROI estimate in real time.</p>
+            <p className="text-muted-foreground text-lg">Answer a few questions about your business and get a personalized AI automation roadmap.</p>
           </div>
 
           <div className="max-w-4xl mx-auto p-8 md:p-12 rounded-2xl bg-gradient-card border border-border">
@@ -348,56 +304,61 @@ const ROICalculator = () => {
                 <div className="h-full bg-gradient-gold rounded-full transition-all duration-500" style={{ width: `${step * 33.33}%` }} />
               </div>
               <div className="flex justify-between text-sm">
-                {['1. Business Info', '2. Operations', '3. Your Results'].map((label, i) => (
+                {['1. Your Business', '2. Pain Points', '3. Your AI Roadmap'].map((label, i) => (
                   <span key={label} className={i < step ? 'text-gold font-medium' : 'text-muted-foreground'}>{label}</span>
                 ))}
               </div>
             </div>
 
-            {/* Step 1 */}
+            {/* Step 1: Business Info */}
             {step === 1 && (
               <div className="animate-fade-in">
-                <div className="grid md:grid-cols-2 gap-6 mb-8">
+                <div className="grid md:grid-cols-2 gap-6 mb-6">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-muted-foreground">What industry are you in?</label>
-                    <select value={industry} onChange={(e) => setIndustry(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-background border border-border text-foreground focus:border-gold focus:outline-none transition-colors">
+                    <select value={industry} onChange={(e) => handleIndustryChange(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-background border border-border text-foreground focus:border-gold focus:outline-none transition-colors">
                       <option value="">Select your industry</option>
-                      {industries.map((ind) => <option key={ind.value} value={ind.value}>{ind.label}</option>)}
+                      {industryConfigs.map((ind) => <option key={ind.value} value={ind.value}>{ind.label}</option>)}
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-muted-foreground">How many employees do you have?</label>
+                    <label className="text-sm font-medium text-muted-foreground">Company headcount</label>
                     <select value={employees} onChange={(e) => setEmployees(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-background border border-border text-foreground focus:border-gold focus:outline-none transition-colors">
-                      <option value="">Select team size</option>
+                      <option value="">Select headcount</option>
                       {employeeRanges.map((er) => <option key={er.value} value={er.value}>{er.label}</option>)}
                     </select>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-muted-foreground">Average employee hourly cost ($)</label>
-                    <input type="number" value={avgSalary} onChange={(e) => setAvgSalary(Number(e.target.value) || 0)} min={10} max={500} className="w-full px-4 py-3 rounded-xl bg-background border border-border text-foreground focus:border-gold focus:outline-none transition-colors" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-muted-foreground">Annual Revenue (approx.)</label>
-                    <select value={revenue} onChange={(e) => setRevenue(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-background border border-border text-foreground focus:border-gold focus:outline-none transition-colors">
-                      <option value="">Select range</option>
-                      {revenueRanges.map((rr) => <option key={rr.value} value={rr.value}>{rr.label}</option>)}
-                    </select>
-                  </div>
                 </div>
+
+                {/* Industry Hero Stat */}
+                {currentIndustry && (
+                  <div className="animate-fade-in p-5 rounded-xl bg-gold/5 border border-gold/20 mb-8">
+                    <div className="flex items-start gap-3">
+                      <Lightbulb className="w-5 h-5 text-gold shrink-0 mt-0.5" />
+                      <div>
+                        <p className="text-sm font-semibold text-gold mb-1">Did you know?</p>
+                        <p className="text-sm text-muted-foreground leading-relaxed">{currentIndustry.heroStat}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex justify-end">
                   <Button onClick={() => goToStep(2)} className="bg-gradient-gold text-primary-foreground font-semibold px-8 hover:opacity-90 transition-all shadow-gold">
-                    Next: Operations <ArrowRight className="ml-2" size={18} />
+                    Next: Select Pain Points <ArrowRight className="ml-2" size={18} />
                   </Button>
                 </div>
               </div>
             )}
 
-            {/* Step 2 */}
+            {/* Step 2: Industry-Specific Workflows */}
             {step === 2 && (
               <div className="animate-fade-in">
-                <p className="text-muted-foreground mb-6">Select the areas where your team spends the most manual time:</p>
+                <p className="text-muted-foreground mb-6">
+                  Select the areas where your <span className="text-gold font-semibold">{currentIndustry?.label}</span> team spends the most manual time:
+                </p>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                  {workflows.map((wf) => {
+                  {currentWorkflows.map((wf) => {
                     const selected = selectedWorkflows.includes(wf.id);
                     return (
                       <button key={wf.id} onClick={() => toggleWorkflow(wf.id)}
@@ -413,9 +374,14 @@ const ROICalculator = () => {
                         </div>
                         <h4 className="font-semibold text-sm mb-1">{wf.title}</h4>
                         <p className="text-xs text-muted-foreground mb-2 leading-relaxed">{wf.description}</p>
-                        <span className="text-xs font-semibold text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-full">
-                          ~{wf.hours} hrs/week saved
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-full">
+                            ~{wf.hoursPerWeek} hrs/week saved
+                          </span>
+                          <span className="text-xs font-semibold text-violet-400 bg-violet-400/10 px-2 py-1 rounded-full">
+                            {wf.errorReductionPercent}% fewer errors
+                          </span>
+                        </div>
                       </button>
                     );
                   })}
@@ -437,7 +403,7 @@ const ROICalculator = () => {
                     <ArrowLeft className="mr-2" size={18} /> Back
                   </Button>
                   <Button onClick={() => goToStep(3)} className="bg-gradient-gold text-primary-foreground font-semibold px-8 hover:opacity-90 transition-all shadow-gold">
-                    See My Results <ArrowRight className="ml-2" size={18} />
+                    See My AI Roadmap <ArrowRight className="ml-2" size={18} />
                   </Button>
                 </div>
               </div>
@@ -446,23 +412,26 @@ const ROICalculator = () => {
             {/* Step 3: Results */}
             {step === 3 && results && (
               <div className="animate-fade-in">
-                {/* Main number */}
+                {/* A) Hero ROI Number */}
                 <div className="text-center p-8 rounded-2xl bg-gradient-to-br from-gold/10 to-gold/5 border border-gold/20 mb-8">
-                  <p className="text-muted-foreground mb-2">Your Estimated AI ROI</p>
+                  <p className="text-muted-foreground mb-2">Your Estimated Annual AI Savings</p>
                   <div className="flex items-baseline justify-center gap-1">
                     <span className="text-3xl font-bold text-gold">$</span>
                     <span className="text-5xl md:text-6xl font-extrabold text-gradient-gold font-display">{formatNumber(results.annualSavings)}</span>
-                    <span className="text-lg text-muted-foreground ml-2">/year in savings</span>
+                    <span className="text-lg text-muted-foreground ml-2">/year</span>
                   </div>
+                  <p className="text-sm text-muted-foreground mt-3">
+                    Based on <span className="text-gold">{currentIndustry?.label}</span> industry benchmarks and your team size
+                  </p>
                 </div>
 
-                {/* Stats grid */}
+                {/* B) Stats Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                   {[
-                    { icon: Clock, value: String(results.timeSaved), label: 'Hours Saved/Week', color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+                    { icon: Clock, value: String(results.timeSavedPerWeek), label: 'Hours Saved/Week', color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
                     { icon: DollarSign, value: `$${formatNumber(results.monthlySavings)}`, label: 'Monthly Savings', color: 'text-gold', bg: 'bg-gold/10' },
                     { icon: TrendingUp, value: `${results.roiPercent}%`, label: 'Estimated ROI', color: 'text-violet-400', bg: 'bg-violet-400/10' },
-                    { icon: CalendarDays, value: results.paybackMonths <= 1 ? '< 1 mo' : `${results.paybackMonths} mo`, label: 'Months to Payback', color: 'text-sky-400', bg: 'bg-sky-400/10' },
+                    { icon: CalendarDays, value: results.paybackMonths <= 1 ? '< 1 mo' : `${results.paybackMonths} mo`, label: 'Payback Period', color: 'text-sky-400', bg: 'bg-sky-400/10' },
                   ].map((stat) => (
                     <div key={stat.label} className="p-5 rounded-xl bg-background border border-border text-center">
                       <div className={`w-10 h-10 ${stat.bg} rounded-lg flex items-center justify-center mx-auto mb-3`}>
@@ -474,26 +443,117 @@ const ROICalculator = () => {
                   ))}
                 </div>
 
-                {/* Recommendations */}
+                {/* C) AI Automation Roadmap */}
                 <div className="p-6 rounded-xl bg-background border border-border mb-8">
-                  <h4 className="font-display font-bold text-lg mb-4">Your AI Workflow Recommendations</h4>
-                  <div className="divide-y divide-border">
-                    {results.recommendations.map((rec) => (
-                      <div key={rec.name} className="flex items-start gap-4 py-4 first:pt-0 last:pb-0">
-                        <div className="w-9 h-9 rounded-lg bg-emerald-400/10 flex items-center justify-center shrink-0 mt-0.5">
-                          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  <h4 className="font-display font-bold text-lg mb-2">Your AI Automation Roadmap</h4>
+                  <p className="text-xs text-muted-foreground mb-5">Prioritized by impact — start at the top for fastest results.</p>
+                  <div className="space-y-4">
+                    {results.recommendations.map((rec, i) => {
+                      const maxSavings = Math.max(...results.recommendations.map((r) => r.annualSavings));
+                      const barWidth = maxSavings > 0 ? (rec.annualSavings / maxSavings) * 100 : 0;
+                      return (
+                        <div key={rec.name} className="p-4 rounded-xl border border-border hover:border-gold/30 transition-colors">
+                          <div className="flex items-start gap-4">
+                            <div className="shrink-0">
+                              {i === 0 ? (
+                                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gradient-gold text-primary-foreground text-xs font-bold shadow-gold">
+                                  <Zap className="w-3 h-3" /> Start Here
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-3 py-1 rounded-full bg-secondary text-muted-foreground text-xs font-bold">
+                                  Phase {i + 1}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between mb-1">
+                                <h5 className="font-semibold text-sm">{rec.name}</h5>
+                                <span className="text-sm font-bold text-emerald-400 shrink-0 ml-2">${formatNumber(rec.annualSavings)}/yr</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mb-2">{rec.description}</p>
+                              <div className="flex items-center gap-4 mb-2">
+                                <span className="text-xs text-muted-foreground">{rec.hoursPerWeek} hrs/week saved</span>
+                                <span className="text-xs text-muted-foreground">{rec.errorReduction}% error reduction</span>
+                              </div>
+                              <div className="w-full h-1.5 bg-secondary rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-emerald-400 to-gold rounded-full transition-all duration-700"
+                                  style={{ width: `${barWidth}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <h5 className="font-semibold text-sm">{rec.name}</h5>
-                          <p className="text-xs text-muted-foreground">{rec.desc}</p>
-                        </div>
-                        <span className="text-sm font-bold text-emerald-400 shrink-0">${formatNumber(rec.savings)}/yr</span>
-                      </div>
-                    ))}
+                      );
+                    })}
+                  </div>
+                  <div className="mt-5 pt-4 border-t border-border">
+                    <p className="text-sm text-muted-foreground">
+                      Estimated payback period: <span className="text-gold font-semibold">{results.paybackMonths <= 1 ? 'Less than 1 month' : `${results.paybackMonths} months`}</span>
+                    </p>
                   </div>
                 </div>
 
-                {/* Lead Capture */}
+                {/* D) What You're Losing by Waiting */}
+                <div className="p-6 rounded-xl border border-amber-500/30 bg-amber-500/5 mb-8">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-display font-bold text-lg text-amber-400 mb-2">What You're Losing by Waiting</h4>
+                      <div className="grid sm:grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-2xl font-bold text-amber-400 font-display">${formatNumber(results.monthlySavings)}</p>
+                          <p className="text-xs text-muted-foreground">lost every month you delay</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-amber-400 font-display">${formatNumber(results.costOfWaiting)}</p>
+                          <p className="text-xs text-muted-foreground">lost in the next 3 months</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-amber-400 font-display">${formatNumber(results.annualSavings)}</p>
+                          <p className="text-xs text-muted-foreground">left on the table this year</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* E) Smart Upsell: Dedicated AI Engineer */}
+                {results.annualSavings >= UPSELL_THRESHOLD ? (
+                  <div className="p-6 rounded-xl border-2 border-gold/50 bg-gradient-to-br from-gold/10 to-gold/5 mb-8">
+                    <div className="flex items-start gap-4">
+                      <div className="w-12 h-12 rounded-xl bg-gradient-gold flex items-center justify-center shadow-gold shrink-0">
+                        <UserCog className="w-6 h-6 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="font-display font-bold text-lg">Your Savings Justify a Dedicated AI Resource</h4>
+                          <span className="text-xs font-bold px-2 py-1 rounded-full bg-gradient-gold text-primary-foreground">Recommended</span>
+                        </div>
+                        <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                          Companies saving ${formatNumber(UPSELL_THRESHOLD)}+ per year see 3x faster implementation with a dedicated ATALNT AI Engineer embedded in their team. Get a full-time AI specialist who knows {currentIndustry?.label?.toLowerCase()}, builds custom automations, and continuously optimizes your workflows.
+                        </p>
+                        <a href="https://admin-atalnt.zohobookings.com/#/4732308000000813002" target="_blank" rel="noopener noreferrer">
+                          <Button className="bg-gradient-gold text-primary-foreground font-semibold hover:opacity-90 transition-all shadow-gold">
+                            Explore Dedicated AI Engineering <ArrowRight className="ml-2" size={16} />
+                          </Button>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-5 rounded-xl border border-border bg-background mb-8">
+                    <div className="flex items-start gap-3">
+                      <UserCog className="w-5 h-5 text-gold shrink-0 mt-0.5" />
+                      <div>
+                        <h5 className="font-semibold text-sm mb-1">Scale with a Dedicated AI Engineer</h5>
+                        <p className="text-xs text-muted-foreground">As your automation grows, consider a dedicated ATALNT AI resource to maximize ROI and continuously optimize your workflows.</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* F) Lead Capture */}
                 <div className="p-8 rounded-2xl bg-gradient-to-br from-gold/10 to-gold/5 border border-gold/20 mb-8 text-center">
                   {!submitted ? (
                     <>
@@ -502,12 +562,15 @@ const ROICalculator = () => {
                       <p className="text-muted-foreground mb-6">We'll send you a detailed breakdown and schedule a free 30-minute consultation to map out your AI roadmap.</p>
                       <form onSubmit={handleSubmit} className="max-w-lg mx-auto">
                         <div className="grid sm:grid-cols-2 gap-3 mb-3">
-                          <input required value={leadName} onChange={(e) => setLeadName(e.target.value)} placeholder="Your Name" className="px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
+                          <input required value={leadName} onChange={(e) => setLeadName(e.target.value)} placeholder="Full Name" className="px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
                           <input required type="email" value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)} placeholder="Work Email" className="px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
                         </div>
-                        <div className="grid sm:grid-cols-2 gap-3 mb-4">
+                        <div className="grid sm:grid-cols-2 gap-3 mb-3">
                           <input required value={leadCompany} onChange={(e) => setLeadCompany(e.target.value)} placeholder="Company Name" className="px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
-                          <input type="tel" value={leadPhone} onChange={(e) => setLeadPhone(e.target.value)} placeholder="Phone (optional)" className="px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
+                          <input value={leadTitle} onChange={(e) => setLeadTitle(e.target.value)} placeholder="Job Title (optional)" className="px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
+                        </div>
+                        <div className="mb-4">
+                          <input type="tel" value={leadPhone} onChange={(e) => setLeadPhone(e.target.value)} placeholder="Phone (optional)" className="w-full px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
                         </div>
                         <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground font-semibold py-6 text-lg hover:opacity-90 transition-all shadow-gold">
                           Book My Free Strategy Session <ArrowRight className="ml-2" size={20} />
@@ -540,46 +603,6 @@ const ROICalculator = () => {
         </div>
       </section>
 
-      {/* Testimonials */}
-      <section className="py-20 bg-card">
-        <div className="container mx-auto px-6">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="text-gold font-semibold tracking-wider uppercase text-sm">What Clients Say</span>
-            <h2 className="font-display text-4xl md:text-5xl font-bold mt-4 mb-6">
-              Real Results from <span className="text-gradient-gold">Real Businesses</span>
-            </h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {[
-              {
-                quote: 'We automated our entire client onboarding process. What used to take 3 hours now takes 15 minutes. The ROI calculator was spot on.',
-                role: 'Operations Manager',
-                company: 'Logistics Company, 45 employees',
-              },
-              {
-                quote: "I was skeptical about AI, but the numbers don't lie. We're saving over $8,000/month on tasks that used to eat up our team's time.",
-                role: 'Business Owner',
-                company: 'Professional Services, 12 employees',
-              },
-              {
-                quote: "The strategy session alone was worth it. They identified workflows I hadn't even considered automating. Game changer for our small team.",
-                role: 'Founder & CEO',
-                company: 'E-commerce Brand, 8 employees',
-              },
-            ].map((t) => (
-              <div key={t.role} className="p-8 rounded-2xl bg-gradient-card border border-border hover:border-gold/50 transition-all duration-500">
-                <div className="text-gold text-lg mb-4 tracking-wider">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-                <p className="text-muted-foreground mb-6 leading-relaxed italic">"{t.quote}"</p>
-                <div>
-                  <p className="font-semibold text-sm">{t.role}</p>
-                  <p className="text-xs text-muted-foreground">{t.company}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* Final CTA */}
       <section className="py-24 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-gold/10 via-background to-background" />
@@ -589,7 +612,7 @@ const ROICalculator = () => {
             Ready to See What AI Can Do for <span className="text-gradient-gold">Your Business</span>?
           </h2>
           <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
-            Join hundreds of small and mid-size businesses already saving time and money with AI workflows.
+            Join hundreds of businesses already saving time and money with AI workflows tailored to their industry.
           </p>
           <Button onClick={() => { setStep(1); setResults(null); setTimeout(() => { const el = document.getElementById('calculator-section'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); }}
             size="lg" className="bg-gradient-gold text-primary-foreground font-semibold px-10 py-6 text-lg hover:opacity-90 transition-all shadow-gold">
