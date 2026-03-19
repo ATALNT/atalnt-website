@@ -111,9 +111,12 @@ const ROICalculator = () => {
     const errorCostSavings = Math.round(annualSavings * 0.15);
     const totalAnnualSavings = Math.round(annualSavings + errorCostSavings);
 
-    const monthlyInvestment = monthlyInvestmentBySize[employees] ?? 500;
+    // Investment is roughly 20-30% of savings, scaled by company size
+    const sizeMultiplier = monthlyInvestmentBySize[employees] ?? 500;
+    const baseMonthlyInvestment = Math.max(200, Math.round((monthlySavings * 1.15) * 0.25));
+    const monthlyInvestment = Math.min(baseMonthlyInvestment, sizeMultiplier);
     const annualInvestment = monthlyInvestment * 12;
-    const roiPercent = Math.round(((totalAnnualSavings - annualInvestment) / annualInvestment) * 100);
+    const roiPercent = annualInvestment > 0 ? Math.round(((totalAnnualSavings - annualInvestment) / annualInvestment) * 100) : 0;
     const paybackMonths = monthlySavings > 0 ? Math.max(1, Math.round((monthlyInvestment / (monthlySavings * 1.15)) * 2)) : 0;
 
     const costOfWaiting = Math.round(totalAnnualSavings / 4);
