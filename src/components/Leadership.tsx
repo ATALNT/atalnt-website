@@ -5,14 +5,6 @@ import lavanyaThatikondaImg from '@/assets/lavanya-thatikonda.jpeg';
 
 const leaders = [
   {
-    name: 'Nik Jain',
-    role: 'Executive Partner',
-    bio: 'Executive Partner with a diverse background in recruiting, logistics, and technology. Nik founded JP Recruiting Agency and now leads the AI practice at ATALNT, combining entrepreneurial vision with a servant-leadership approach to drive growth.',
-    image: nikJainImg,
-    objectPosition: 'object-[center_20%]',
-    linkedin: 'https://www.linkedin.com/in/jainnik/',
-  },
-  {
     name: 'Kelly Brown',
     role: 'Founding Partner',
     bio: 'Founding Partner with over 15 years in global logistics and transportation recruiting. Kelly built her own agency from the ground up into a six-figure success, bringing resilience and relationship-driven strategies to ATALNT.',
@@ -27,6 +19,14 @@ const leaders = [
     image: lavanyaThatikondaImg,
     objectPosition: 'object-[center_15%] scale-[1.15] origin-top',
     linkedin: 'https://www.linkedin.com/in/lavanyapoosarla/',
+  },
+  {
+    name: 'Nik Jain',
+    role: 'Executive Partner',
+    bio: 'Executive Partner with a diverse background in recruiting, logistics, and technology. Nik founded JP Recruiting Agency and now leads the AI practice at ATALNT, combining entrepreneurial vision with a servant-leadership approach to drive growth.',
+    image: nikJainImg,
+    objectPosition: 'object-[center_20%]',
+    linkedin: 'https://www.linkedin.com/in/jainnik/',
   },
 ];
 
