@@ -401,7 +401,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const avgDaysInPipeline = totalActive > 0 ? Math.round((activeDaysSum / totalActive) * 10) / 10 : 0;
 
     // =============================================
-    // 9. DAILY VOLUME
+    // 9. SUBMISSIONS BY RECRUITER
+    // Candidates whose current status indicates they were submitted to a client
+    // (i.e., reached funnel stage 1+), grouped by recruiter
+    // =============================================
+    const submissionsByRecruiter: Record<string, { submitted: number; newInPeriod: number }> = {};
+    applications.forEach((app) => {
+      const recruiter = getRecruiter(app);
+      const status = app.Application_Status || '';
+      const maxStage = getMaxFunnelStage(status);
+      if (!submissionsByRecruiter[recruiter]) {
+        submissionsByRecruiter[recruiter] = { submitted: 0, newInPeriod: 0 };
+      }
+      submissionsByRecruiter[recruiter].newInPeriod++;
+      if (maxStage >= 1) {
+        submissionsByRecruiter[recruiter].submitted++;
+      }
+    });
+
+    // =============================================
+    // 10. DAILY VOLUME
     // =============================================
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const dailyVolume: Record<string, number> = {};
@@ -438,6 +457,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .sort((a, b) => b.count - a.count),
         recruiterPerformance,
         clientHealth: clientHealth.slice(0, 15),
+        submissionsByRecruiter: Object.entries(submissionsByRecruiter)
+          .map(([recruiterName, data]) => ({ recruiterName, ...data }))
+          .sort((a, b) => b.submitted - a.submitted),
         dailyVolume: Object.entries(dailyVolume)
           .map(([date, count]) => ({ date, count }))
           .sort((a, b) => a.date.localeCompare(b.date)),

@@ -9,7 +9,7 @@ import { fetchRecruitJobs, fetchRecruitApplications } from '@/lib/dashboard-api'
 import {
   Briefcase, Users, Send, Trophy, AlertTriangle, Clock, TrendingDown,
   ChevronDown, ChevronUp, ArrowRight, HelpCircle, Building2, UserCheck,
-  Zap, AlertCircle, Info
+  Zap, AlertCircle, Info, FileText
 } from 'lucide-react';
 
 // Colors for funnel stages (from API)
@@ -108,6 +108,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const clientHealth = appsData?.clientHealth || [];
   const pipeline = appsData?.pipelineByStatus || [];
   const rejectionBreakdown = appsData?.rejectionBreakdown || [];
+  const submissionsByRecruiter = appsData?.submissionsByRecruiter || [];
 
   return (
     <div className="space-y-6">
@@ -125,6 +126,64 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
 
       {/* Help Section */}
       {showHelp && <HelpSection />}
+
+      {/* ============================================ */}
+      {/* PRIMARY REPORT — Submissions by Recruiter    */}
+      {/* The first thing an agency owner wants to see */}
+      {/* ============================================ */}
+      {submissionsByRecruiter.length > 0 && (
+        <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D4A853]/40 to-transparent" />
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+                <Send className="h-3.5 w-3.5 text-[#D4A853]/60" />
+                Submitted to Client — By Recruiter
+              </CardTitle>
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] text-white/20">{periodLabel}</span>
+                <span className="text-xs font-bold text-[#D4A853]">
+                  {submissionsByRecruiter.reduce((sum: number, r: any) => sum + r.submitted, 0)} total
+                </span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {submissionsByRecruiter.filter((r: any) => r.submitted > 0).map((r: any) => {
+                const maxCount = Math.max(...submissionsByRecruiter.map((s: any) => s.submitted));
+                const barWidth = maxCount > 0 ? Math.max((r.submitted / maxCount) * 100, 6) : 6;
+                return (
+                  <div key={r.recruiterName} className="group">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium text-white/80 group-hover:text-white transition-colors">
+                        {r.recruiterName}
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-white/25">
+                          {r.newInPeriod} candidates
+                        </span>
+                        <span className="text-lg font-bold text-[#D4A853] min-w-[32px] text-right">
+                          {r.submitted}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-3 bg-white/[0.04] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-[#D4A853] to-[#b8912e] rounded-full transition-all duration-700"
+                        style={{ width: `${barWidth}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              {submissionsByRecruiter.filter((r: any) => r.submitted > 0).length === 0 && (
+                <p className="text-center text-white/20 py-4">No submissions in this period</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ============================================ */}
       {/* KPI OVERVIEW ROW                             */}
