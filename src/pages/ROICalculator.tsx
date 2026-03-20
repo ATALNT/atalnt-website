@@ -301,7 +301,7 @@ const ROICalculator = () => {
             <p className="text-muted-foreground text-lg">Answer a few questions about your business and get a personalized AI automation roadmap.</p>
           </div>
 
-          <div className="max-w-4xl mx-auto p-8 md:p-12 rounded-2xl bg-gradient-card border border-border">
+          <div className="max-w-4xl mx-auto p-4 sm:p-8 md:p-12 rounded-2xl bg-gradient-card border border-border">
             {/* Progress */}
             <div className="mb-10">
               <div className="h-1 bg-secondary rounded-full overflow-hidden mb-4">
@@ -524,12 +524,12 @@ const ROICalculator = () => {
 
                 {/* E) Smart Upsell: Dedicated AI Engineer */}
                 {results.annualSavings >= UPSELL_THRESHOLD ? (
-                  <div className="p-4 sm:p-6 rounded-xl border-2 border-gold/50 bg-gradient-to-br from-gold/10 to-gold/5 mb-8">
+                  <div className="p-5 sm:p-6 rounded-xl border-2 border-gold/50 bg-gradient-to-br from-gold/10 to-gold/5 mb-8 overflow-hidden">
                     <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
                       <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-gold flex items-center justify-center shadow-gold shrink-0">
                         <UserCog className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
                       </div>
-                      <div>
+                      <div className="min-w-0 w-full">
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                           <h4 className="font-display font-bold text-base sm:text-lg">Your Savings Justify a Dedicated AI Resource</h4>
                           <span className="text-xs font-bold px-2 py-1 rounded-full bg-gradient-gold text-primary-foreground">Recommended</span>
