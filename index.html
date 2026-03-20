@@ -28,7 +28,36 @@
     <script type="module" src="/src/main.tsx"></script>
 
     <!-- Zoho SalesIQ Live Chat Widget -->
-    <script>window.$zoho=window.$zoho || {};$zoho.salesiq=$zoho.salesiq||{ready:function(){}};</script>
+    <script>
+      window.$zoho=window.$zoho || {};
+      $zoho.salesiq=$zoho.salesiq||{ready:function(){}};
+      $zoho.salesiq.ready = function() {
+        // Hide the "We're Online" float text on mobile
+        if (window.innerWidth < 768) {
+          $zoho.salesiq.floatbutton.visible('hide');
+        }
+        // Minimize the chat window by default
+        $zoho.salesiq.floatwindow.visible('hide');
+      };
+    </script>
     <script id="zsiqscript" src="https://salesiq.zohopublic.com/widget?wc=siq74a0cdf389f3ea4e97d2e2e222ed39a56dfcc4b1f4fd1e25d8e90ef17f5e327e" defer></script>
+    <style>
+      /* Make Zoho chat widget smaller and less intrusive on mobile */
+      @media (max-width: 767px) {
+        .zsiq_floatmain {
+          transform: scale(0.75) !important;
+          transform-origin: bottom right !important;
+          bottom: 8px !important;
+          right: 8px !important;
+        }
+        .zsiq_theme1.zsiq_floatmain {
+          min-height: unset !important;
+        }
+        /* Hide the "We're Online" label on mobile */
+        .zsiq_flt_rel .zsiq_cnt {
+          display: none !important;
+        }
+      }
+    </style>
   </body>
 </html>

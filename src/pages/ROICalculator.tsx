@@ -234,11 +234,11 @@ const ROICalculator = () => {
             <span className="w-2 h-2 rounded-full bg-gold animate-pulse" />
             <span className="text-sm font-medium text-muted-foreground">AI-Powered Business Growth</span>
           </div>
-          <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold mb-6 animate-slide-up">
+          <h1 className="font-display text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6 animate-slide-up">
             See How Much <span className="text-gradient-gold">AI Workflows</span>
             <br />Can Save Your Business
           </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+          <p className="text-base sm:text-xl text-muted-foreground max-w-2xl mx-auto mb-8 sm:mb-10 animate-slide-up" style={{ animationDelay: '0.2s' }}>
             Get a personalized AI automation roadmap tailored to your industry. Calculate your savings in under 2 minutes.
           </p>
           <div className="flex flex-wrap justify-center gap-8 animate-fade-in" style={{ animationDelay: '0.4s' }}>
@@ -261,7 +261,7 @@ const ROICalculator = () => {
         <div className="container mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto mb-16">
             <span className="text-gold font-semibold tracking-wider uppercase text-sm">How It Works</span>
-            <h2 className="font-display text-4xl md:text-5xl font-bold mt-4 mb-6">
+            <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold mt-4 mb-6">
               Three Steps to <span className="text-gradient-gold">Transformation</span>
             </h2>
           </div>
@@ -417,12 +417,12 @@ const ROICalculator = () => {
             {step === 3 && results && (
               <div className="animate-fade-in">
                 {/* A) Hero ROI Number */}
-                <div className="text-center p-8 rounded-2xl bg-gradient-to-br from-gold/10 to-gold/5 border border-gold/20 mb-8">
-                  <p className="text-muted-foreground mb-2">Your Estimated Annual AI Savings</p>
+                <div className="text-center p-5 sm:p-8 rounded-2xl bg-gradient-to-br from-gold/10 to-gold/5 border border-gold/20 mb-8">
+                  <p className="text-sm sm:text-base text-muted-foreground mb-2">Your Estimated Annual AI Savings</p>
                   <div className="flex items-baseline justify-center gap-1">
-                    <span className="text-3xl font-bold text-gold">$</span>
-                    <span className="text-5xl md:text-6xl font-extrabold text-gradient-gold font-display">{formatNumber(results.annualSavings)}</span>
-                    <span className="text-lg text-muted-foreground ml-2">/year</span>
+                    <span className="text-2xl sm:text-3xl font-bold text-gold">$</span>
+                    <span className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-gradient-gold font-display">{formatNumber(results.annualSavings)}</span>
+                    <span className="text-sm sm:text-lg text-muted-foreground ml-1 sm:ml-2">/year</span>
                   </div>
                   <p className="text-sm text-muted-foreground mt-3">
                     Based on <span className="text-gold">{currentIndustry?.label}</span> industry benchmarks and your team size
@@ -430,19 +430,19 @@ const ROICalculator = () => {
                 </div>
 
                 {/* B) Stats Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-8">
                   {[
                     { icon: Clock, value: String(results.timeSavedPerWeek), label: 'Hours Saved/Week', color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
                     { icon: DollarSign, value: `$${formatNumber(results.monthlySavings)}`, label: 'Monthly Savings', color: 'text-gold', bg: 'bg-gold/10' },
                     { icon: TrendingUp, value: `${results.roiPercent}%`, label: 'Estimated ROI', color: 'text-violet-400', bg: 'bg-violet-400/10' },
                     { icon: CalendarDays, value: results.paybackMonths <= 1 ? '< 1 mo' : `${results.paybackMonths} mo`, label: 'Payback Period', color: 'text-sky-400', bg: 'bg-sky-400/10' },
                   ].map((stat) => (
-                    <div key={stat.label} className="p-5 rounded-xl bg-background border border-border text-center">
-                      <div className={`w-10 h-10 ${stat.bg} rounded-lg flex items-center justify-center mx-auto mb-3`}>
-                        <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                    <div key={stat.label} className="p-3 sm:p-5 rounded-xl bg-background border border-border text-center">
+                      <div className={`w-8 h-8 sm:w-10 sm:h-10 ${stat.bg} rounded-lg flex items-center justify-center mx-auto mb-2 sm:mb-3`}>
+                        <stat.icon className={`w-4 h-4 sm:w-5 sm:h-5 ${stat.color}`} />
                       </div>
-                      <div className="text-2xl font-bold font-display">{stat.value}</div>
-                      <div className="text-xs text-muted-foreground mt-1">{stat.label}</div>
+                      <div className="text-xl sm:text-2xl font-bold font-display">{stat.value}</div>
+                      <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">{stat.label}</div>
                     </div>
                   ))}
                 </div>
@@ -457,7 +457,7 @@ const ROICalculator = () => {
                       const barWidth = maxSavings > 0 ? (rec.annualSavings / maxSavings) * 100 : 0;
                       return (
                         <div key={rec.name} className="p-4 rounded-xl border border-border hover:border-gold/30 transition-colors">
-                          <div className="flex items-start gap-4">
+                          <div className="flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-4">
                             <div className="shrink-0">
                               {i === 0 ? (
                                 <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gradient-gold text-primary-foreground text-xs font-bold shadow-gold">
@@ -470,12 +470,12 @@ const ROICalculator = () => {
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-1">
+                              <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-1 mb-1">
                                 <h5 className="font-semibold text-sm">{rec.name}</h5>
-                                <span className="text-sm font-bold text-emerald-400 shrink-0 ml-2">${formatNumber(rec.annualSavings)}/yr</span>
+                                <span className="text-sm font-bold text-emerald-400 shrink-0">${formatNumber(rec.annualSavings)}/yr</span>
                               </div>
                               <p className="text-xs text-muted-foreground mb-2">{rec.description}</p>
-                              <div className="flex items-center gap-4 mb-2">
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2">
                                 <span className="text-xs text-muted-foreground">{rec.hoursPerWeek} hrs/week saved</span>
                                 <span className="text-xs text-muted-foreground">{rec.errorReduction}% error reduction</span>
                               </div>
@@ -499,23 +499,23 @@ const ROICalculator = () => {
                 </div>
 
                 {/* D) What You're Losing by Waiting */}
-                <div className="p-6 rounded-xl border border-amber-500/30 bg-amber-500/5 mb-8">
+                <div className="p-4 sm:p-6 rounded-xl border border-amber-500/30 bg-amber-500/5 mb-8">
                   <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
-                    <div>
-                      <h4 className="font-display font-bold text-lg text-amber-400 mb-2">What You're Losing by Waiting</h4>
-                      <div className="grid sm:grid-cols-3 gap-4">
+                    <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-display font-bold text-base sm:text-lg text-amber-400 mb-2">What You're Losing by Waiting</h4>
+                      <div className="grid grid-cols-3 gap-2 sm:gap-4">
                         <div>
-                          <p className="text-2xl font-bold text-amber-400 font-display">${formatNumber(results.monthlySavings)}</p>
-                          <p className="text-xs text-muted-foreground">lost every month you delay</p>
+                          <p className="text-lg sm:text-2xl font-bold text-amber-400 font-display">${formatNumber(results.monthlySavings)}</p>
+                          <p className="text-[10px] sm:text-xs text-muted-foreground">lost every month you delay</p>
                         </div>
                         <div>
-                          <p className="text-2xl font-bold text-amber-400 font-display">${formatNumber(results.costOfWaiting)}</p>
-                          <p className="text-xs text-muted-foreground">lost in the next 3 months</p>
+                          <p className="text-lg sm:text-2xl font-bold text-amber-400 font-display">${formatNumber(results.costOfWaiting)}</p>
+                          <p className="text-[10px] sm:text-xs text-muted-foreground">lost in the next 3 months</p>
                         </div>
                         <div>
-                          <p className="text-2xl font-bold text-amber-400 font-display">${formatNumber(results.annualSavings)}</p>
-                          <p className="text-xs text-muted-foreground">left on the table this year</p>
+                          <p className="text-lg sm:text-2xl font-bold text-amber-400 font-display">${formatNumber(results.annualSavings)}</p>
+                          <p className="text-[10px] sm:text-xs text-muted-foreground">left on the table this year</p>
                         </div>
                       </div>
                     </div>
@@ -524,14 +524,14 @@ const ROICalculator = () => {
 
                 {/* E) Smart Upsell: Dedicated AI Engineer */}
                 {results.annualSavings >= UPSELL_THRESHOLD ? (
-                  <div className="p-6 rounded-xl border-2 border-gold/50 bg-gradient-to-br from-gold/10 to-gold/5 mb-8">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-gold flex items-center justify-center shadow-gold shrink-0">
-                        <UserCog className="w-6 h-6 text-primary-foreground" />
+                  <div className="p-4 sm:p-6 rounded-xl border-2 border-gold/50 bg-gradient-to-br from-gold/10 to-gold/5 mb-8">
+                    <div className="flex flex-col sm:flex-row items-start gap-3 sm:gap-4">
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-gold flex items-center justify-center shadow-gold shrink-0">
+                        <UserCog className="w-5 h-5 sm:w-6 sm:h-6 text-primary-foreground" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <h4 className="font-display font-bold text-lg">Your Savings Justify a Dedicated AI Resource</h4>
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          <h4 className="font-display font-bold text-base sm:text-lg">Your Savings Justify a Dedicated AI Resource</h4>
                           <span className="text-xs font-bold px-2 py-1 rounded-full bg-gradient-gold text-primary-foreground">Recommended</span>
                         </div>
                         <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
@@ -558,26 +558,26 @@ const ROICalculator = () => {
                 )}
 
                 {/* F) Lead Capture */}
-                <div className="p-8 rounded-2xl bg-gradient-to-br from-gold/10 to-gold/5 border border-gold/20 mb-8 text-center">
+                <div className="p-5 sm:p-8 rounded-2xl bg-gradient-to-br from-gold/10 to-gold/5 border border-gold/20 mb-8 text-center">
                   {!submitted ? (
                     <>
-                      <Sparkles className="w-8 h-8 text-gold mx-auto mb-4" />
-                      <h3 className="font-display text-2xl font-bold mb-2">Get Your Full ROI Report & Strategy Session</h3>
-                      <p className="text-muted-foreground mb-6">We'll send you a detailed breakdown and schedule a free 30-minute consultation to map out your AI roadmap.</p>
+                      <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-gold mx-auto mb-3 sm:mb-4" />
+                      <h3 className="font-display text-xl sm:text-2xl font-bold mb-2">Get Your Full ROI Report & Strategy Session</h3>
+                      <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6">We'll send you a detailed breakdown and schedule a free 30-minute consultation to map out your AI roadmap.</p>
                       <form onSubmit={handleSubmit} className="max-w-lg mx-auto">
-                        <div className="grid sm:grid-cols-2 gap-3 mb-3">
-                          <input required value={leadName} onChange={(e) => setLeadName(e.target.value)} placeholder="Full Name" className="px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
-                          <input required type="email" value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)} placeholder="Work Email" className="px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                          <input required value={leadName} onChange={(e) => setLeadName(e.target.value)} placeholder="Full Name" className="px-4 py-3 rounded-xl bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
+                          <input required type="email" value={leadEmail} onChange={(e) => setLeadEmail(e.target.value)} placeholder="Work Email" className="px-4 py-3 rounded-xl bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
                         </div>
-                        <div className="grid sm:grid-cols-2 gap-3 mb-3">
-                          <input required value={leadCompany} onChange={(e) => setLeadCompany(e.target.value)} placeholder="Company Name" className="px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
-                          <input value={leadTitle} onChange={(e) => setLeadTitle(e.target.value)} placeholder="Job Title (optional)" className="px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                          <input required value={leadCompany} onChange={(e) => setLeadCompany(e.target.value)} placeholder="Company Name" className="px-4 py-3 rounded-xl bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
+                          <input value={leadTitle} onChange={(e) => setLeadTitle(e.target.value)} placeholder="Job Title (optional)" className="px-4 py-3 rounded-xl bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
                         </div>
                         <div className="mb-4">
-                          <input type="tel" value={leadPhone} onChange={(e) => setLeadPhone(e.target.value)} placeholder="Phone (optional)" className="w-full px-4 py-3 rounded-xl bg-background border border-border text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
+                          <input type="tel" value={leadPhone} onChange={(e) => setLeadPhone(e.target.value)} placeholder="Phone (optional)" className="w-full px-4 py-3 rounded-xl bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground focus:border-gold focus:outline-none transition-colors" />
                         </div>
-                        <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground font-semibold py-6 text-lg hover:opacity-90 transition-all shadow-gold">
-                          Book My Free Strategy Session <ArrowRight className="ml-2" size={20} />
+                        <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground font-semibold py-5 sm:py-6 text-base sm:text-lg hover:opacity-90 transition-all shadow-gold">
+                          Book My Free Strategy Session <ArrowRight className="ml-2" size={18} />
                         </Button>
                         <p className="text-xs text-muted-foreground mt-3">No commitment required. We'll reach out within 24 hours.</p>
                       </form>
@@ -585,19 +585,19 @@ const ROICalculator = () => {
                   ) : (
                     <div className="py-8">
                       <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-4" />
-                      <h3 className="font-display text-2xl font-bold text-emerald-400 mb-2">You're All Set!</h3>
-                      <p className="text-muted-foreground">We've received your information and will be in touch within 24 hours to schedule your free strategy session.</p>
+                      <h3 className="font-display text-xl sm:text-2xl font-bold text-emerald-400 mb-2">You're All Set!</h3>
+                      <p className="text-sm sm:text-base text-muted-foreground">We've received your information and will be in touch within 24 hours to schedule your free strategy session.</p>
                     </div>
                   )}
                 </div>
 
-                <div className="flex justify-between">
-                  <Button variant="outline" onClick={() => { setStep(2); setResults(null); }} className="border-border hover:bg-secondary">
-                    <ArrowLeft className="mr-2" size={18} /> Adjust Inputs
+                <div className="flex flex-col sm:flex-row justify-between gap-3">
+                  <Button variant="outline" onClick={() => { setStep(2); setResults(null); }} className="border-border hover:bg-secondary text-sm">
+                    <ArrowLeft className="mr-2" size={16} /> Adjust Inputs
                   </Button>
                   <a href="https://admin-atalnt.zohobookings.com/#/4732308000000813002" target="_blank" rel="noopener noreferrer">
-                    <Button className="bg-gradient-gold text-primary-foreground font-semibold px-8 hover:opacity-90 transition-all shadow-gold">
-                      Book a Meeting <ArrowRight className="ml-2" size={18} />
+                    <Button className="w-full sm:w-auto bg-gradient-gold text-primary-foreground font-semibold px-6 sm:px-8 hover:opacity-90 transition-all shadow-gold text-sm">
+                      Book a Meeting <ArrowRight className="ml-2" size={16} />
                     </Button>
                   </a>
                 </div>
@@ -612,10 +612,10 @@ const ROICalculator = () => {
         <div className="absolute inset-0 bg-gradient-to-br from-gold/10 via-background to-background" />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gold/20 rounded-full blur-[120px]" />
         <div className="container relative z-10 mx-auto px-6 text-center">
-          <h2 className="font-display text-4xl md:text-5xl font-bold mb-6">
+          <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold mb-6">
             Ready to See What AI Can Do for <span className="text-gradient-gold">Your Business</span>?
           </h2>
-          <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
+          <p className="text-base sm:text-xl text-muted-foreground mb-8 sm:mb-10 max-w-2xl mx-auto">
             Join hundreds of businesses already saving time and money with AI workflows tailored to their industry.
           </p>
           <Button onClick={() => { setStep(1); setResults(null); setTimeout(() => { const el = document.getElementById('calculator-section'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 50); }}
