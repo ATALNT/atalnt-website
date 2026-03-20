@@ -28,7 +28,7 @@ export const Services = () => {
         {/* Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
           <span className="text-gold font-semibold tracking-wider uppercase text-sm">What We Offer</span>
-          <h2 className="font-display text-4xl md:text-5xl font-bold mt-4 mb-6">
+          <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold mt-4 mb-6">
             Our
             <span className="text-gradient-gold"> Solutions</span>
           </h2>
@@ -42,7 +42,7 @@ export const Services = () => {
           {services.map((service, index) => (
             <div
               key={service.title}
-              className="group relative p-8 rounded-2xl bg-gradient-card border border-border hover:border-gold/50 transition-all duration-500 overflow-hidden"
+              className="group relative p-5 sm:p-8 rounded-2xl bg-gradient-card border border-border hover:border-gold/50 transition-all duration-500 overflow-hidden"
               style={{ animationDelay: `${index * 100}ms` }}
             >
               {/* Glow Effect */}

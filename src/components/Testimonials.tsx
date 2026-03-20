@@ -28,7 +28,7 @@ export const Testimonials = () => {
         {/* Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
           <span className="text-gold font-semibold tracking-wider uppercase text-sm">Testimonials</span>
-          <h2 className="font-display text-4xl md:text-5xl font-bold mt-4 mb-6">
+          <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold mt-4 mb-6">
             Why Industry Leaders
             <span className="text-gradient-gold"> Choose ATALNT</span>
           </h2>
@@ -39,7 +39,7 @@ export const Testimonials = () => {
           {testimonials.map((testimonial, index) => (
             <div
               key={testimonial.author}
-              className="relative p-8 rounded-2xl bg-gradient-card border border-border hover:border-gold/30 transition-all duration-300"
+              className="relative p-5 sm:p-8 rounded-2xl bg-gradient-card border border-border hover:border-gold/30 transition-all duration-300"
               style={{ animationDelay: `${index * 100}ms` }}
             >
               {/* Quote Icon */}

@@ -35,7 +35,7 @@ const Contact = () => {
         <div className="container mx-auto px-6">
           <div className="max-w-3xl mx-auto text-center mb-16">
             <span className="text-gold font-semibold tracking-wider uppercase text-sm">Get in Touch</span>
-            <h1 className="font-display text-4xl md:text-5xl font-bold mt-4 mb-6">
+            <h1 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold mt-4 mb-6">
               Contact <span className="text-gradient-gold">Us</span>
             </h1>
             <p className="text-muted-foreground text-lg">
@@ -47,7 +47,7 @@ const Contact = () => {
             {contactInfo.map((item) => (
               <div
                 key={item.label}
-                className="p-8 rounded-2xl bg-gradient-card border border-border"
+                className="p-5 sm:p-8 rounded-2xl bg-gradient-card border border-border"
               >
                 <div className="w-12 h-12 rounded-xl bg-gradient-gold flex items-center justify-center shadow-gold mb-5">
                   <item.icon className="w-6 h-6 text-primary-foreground" />

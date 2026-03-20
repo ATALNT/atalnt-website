@@ -26,14 +26,14 @@ export const Hero = () => {
           </div>
 
           {/* Headline */}
-          <h1 className="font-display text-5xl md:text-6xl lg:text-7xl font-bold leading-tight mb-6 animate-slide-up">
+          <h1 className="font-display text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold leading-tight mb-6 animate-slide-up">
             Technology & Talent
             <br />
             <span className="text-gradient-gold">Solutions</span>
           </h1>
 
           {/* Subheadline */}
-          <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mb-10 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+          <p className="text-base sm:text-xl md:text-2xl text-muted-foreground max-w-2xl mb-8 sm:mb-10 animate-slide-up" style={{ animationDelay: '0.2s' }}>
             We help companies solve their toughest challenges: finding skilled talent, 
             building resilient systems, and staying ahead of disruption.
           </p>
@@ -43,7 +43,7 @@ export const Hero = () => {
             <a href="https://admin-atalnt.zohobookings.com/#/4732308000000813002" target="_blank" rel="noopener noreferrer">
               <Button
                 size="lg"
-                className="bg-gradient-gold text-primary-foreground font-semibold px-8 py-6 text-lg hover:opacity-90 transition-all shadow-gold">
+                className="bg-gradient-gold text-primary-foreground font-semibold px-6 sm:px-8 py-5 sm:py-6 text-base sm:text-lg hover:opacity-90 transition-all shadow-gold">
                 Accelerate Growth
                 <ArrowRight className="ml-2" size={20} />
               </Button>
@@ -52,7 +52,7 @@ export const Hero = () => {
               <Button
                 size="lg"
                 variant="outline"
-                className="border-border text-foreground hover:bg-secondary px-8 py-6 text-lg">
+                className="border-border text-foreground hover:bg-secondary px-6 sm:px-8 py-5 sm:py-6 text-base sm:text-lg">
                 View Open Jobs
                 <ArrowRight className="ml-2" size={20} />
               </Button>

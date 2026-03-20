@@ -53,11 +53,11 @@ const About = () => {
         <div className="container mx-auto px-6">
           <div className="max-w-4xl mx-auto text-center">
             <span className="text-gold font-semibold tracking-wider uppercase text-sm">About Us</span>
-            <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold mt-4 mb-6">
+            <h1 className="font-display text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mt-4 mb-6">
               Building the Future of{' '}
               <span className="text-gradient-gold">Enterprise Operations</span>
             </h1>
-            <p className="text-muted-foreground text-lg md:text-xl max-w-3xl mx-auto leading-relaxed">
+            <p className="text-muted-foreground text-base sm:text-lg md:text-xl max-w-3xl mx-auto leading-relaxed">
               ATALNT is a technology and talent solutions firm that helps companies solve their toughest
               challenges: finding skilled talent, building resilient systems, and staying ahead of disruption.
             </p>
@@ -69,7 +69,7 @@ const About = () => {
       <section className="py-16">
         <div className="container mx-auto px-6">
           <div className="grid md:grid-cols-2 gap-12 max-w-5xl mx-auto">
-            <div className="p-8 rounded-2xl bg-gradient-card border border-border">
+            <div className="p-5 sm:p-8 rounded-2xl bg-gradient-card border border-border">
               <h2 className="font-display text-2xl font-bold mb-4">
                 Our <span className="text-gradient-gold">Mission</span>
               </h2>
@@ -80,7 +80,7 @@ const About = () => {
                 that save thousands of hours annually.
               </p>
             </div>
-            <div className="p-8 rounded-2xl bg-gradient-card border border-border">
+            <div className="p-5 sm:p-8 rounded-2xl bg-gradient-card border border-border">
               <h2 className="font-display text-2xl font-bold mb-4">
                 Our <span className="text-gradient-gold">Vision</span>
               </h2>
@@ -106,7 +106,7 @@ const About = () => {
                 <span className="text-gradient-gold">Enterprise Innovation</span>
               </h2>
             </div>
-            <div className="space-y-6 text-muted-foreground leading-relaxed text-lg">
+            <div className="space-y-6 text-muted-foreground leading-relaxed text-base sm:text-lg">
               <p>
                 ATALNT was founded by a team of industry veterans who saw a fundamental gap in how
                 companies approach talent acquisition and technology adoption. With over 30 years of
@@ -143,7 +143,7 @@ const About = () => {
             {values.map((value) => (
               <div
                 key={value.title}
-                className="group p-8 rounded-2xl bg-gradient-card border border-border hover:border-gold/50 transition-all duration-500"
+                className="group p-5 sm:p-8 rounded-2xl bg-gradient-card border border-border hover:border-gold/50 transition-all duration-500"
               >
                 <div className="w-12 h-12 rounded-xl bg-gradient-gold flex items-center justify-center shadow-gold mb-5">
                   <value.icon className="w-6 h-6 text-primary-foreground" />
@@ -172,7 +172,7 @@ const About = () => {
             {capabilities.map((cap) => (
               <div
                 key={cap.title}
-                className="p-8 rounded-2xl bg-card border border-border"
+                className="p-5 sm:p-8 rounded-2xl bg-card border border-border"
               >
                 <div className="w-14 h-14 rounded-xl bg-gradient-gold flex items-center justify-center shadow-gold mb-6">
                   <cap.icon className="w-7 h-7 text-primary-foreground" />
@@ -188,19 +188,19 @@ const About = () => {
       {/* Stats Bar */}
       <section className="py-16">
         <div className="container mx-auto px-6">
-          <div className="bg-gradient-card rounded-3xl border border-border p-12">
-            <div className="grid grid-cols-3 gap-8 text-center">
+          <div className="bg-gradient-card rounded-2xl sm:rounded-3xl border border-border p-6 sm:p-12">
+            <div className="grid grid-cols-3 gap-4 sm:gap-8 text-center">
               <div>
-                <div className="font-display text-4xl md:text-5xl font-bold text-gradient-gold mb-2">950+</div>
-                <p className="text-muted-foreground font-medium">Placements</p>
+                <div className="font-display text-2xl sm:text-4xl md:text-5xl font-bold text-gradient-gold mb-1 sm:mb-2">950+</div>
+                <p className="text-xs sm:text-base text-muted-foreground font-medium">Placements</p>
               </div>
               <div>
-                <div className="font-display text-4xl md:text-5xl font-bold text-gradient-gold mb-2">98%</div>
-                <p className="text-muted-foreground font-medium">Client Retention</p>
+                <div className="font-display text-2xl sm:text-4xl md:text-5xl font-bold text-gradient-gold mb-1 sm:mb-2">98%</div>
+                <p className="text-xs sm:text-base text-muted-foreground font-medium">Client Retention</p>
               </div>
               <div>
-                <div className="font-display text-4xl md:text-5xl font-bold text-gradient-gold mb-2">30+</div>
-                <p className="text-muted-foreground font-medium">Years of Experience</p>
+                <div className="font-display text-2xl sm:text-4xl md:text-5xl font-bold text-gradient-gold mb-1 sm:mb-2">30+</div>
+                <p className="text-xs sm:text-base text-muted-foreground font-medium">Years of Experience</p>
               </div>
             </div>
           </div>
@@ -219,12 +219,12 @@ const About = () => {
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <a href="https://admin-atalnt.zohobookings.com/#/4732308000000813002" target="_blank" rel="noopener noreferrer">
-              <button className="px-8 py-4 bg-gradient-gold text-primary-foreground font-semibold rounded-full hover:opacity-90 transition-opacity shadow-gold">
+              <button className="px-6 sm:px-8 py-3 sm:py-4 bg-gradient-gold text-primary-foreground font-semibold rounded-full hover:opacity-90 transition-opacity shadow-gold text-sm sm:text-base">
                 Schedule a Consultation
               </button>
             </a>
             <a href="/jobs">
-              <button className="px-8 py-4 border border-border text-foreground font-semibold rounded-full hover:bg-secondary transition-colors">
+              <button className="px-6 sm:px-8 py-3 sm:py-4 border border-border text-foreground font-semibold rounded-full hover:bg-secondary transition-colors text-sm sm:text-base">
                 View Open Jobs
               </button>
             </a>

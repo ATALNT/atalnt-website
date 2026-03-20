@@ -12,7 +12,7 @@ const Apply = () => {
           <span className="text-gold font-semibold tracking-wider uppercase text-sm">
             Apply Now
           </span>
-          <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold mt-4 mb-6">
+          <h1 className="font-display text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mt-4 mb-6">
             Submit Your
             <span className="text-gradient-gold"> Resume</span>
           </h1>

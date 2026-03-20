@@ -19,12 +19,12 @@ export const CTA = () => {
           </div>
 
           {/* Headline */}
-          <h2 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold mb-6">
+          <h2 className="font-display text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-6">
             Let's Build Something
             <span className="text-gradient-gold"> Extraordinary</span>
           </h2>
 
-          <p className="text-xl text-muted-foreground mb-10 max-w-2xl mx-auto">
+          <p className="text-base sm:text-xl text-muted-foreground mb-8 sm:mb-10 max-w-2xl mx-auto">
             Partner with us to unlock your company's full potential. 
             From talent to technology, we deliver solutions that drive real results.
             Explore open roles from our client network or schedule a consultation.
@@ -35,7 +35,7 @@ export const CTA = () => {
             <a href="/roi-calculator">
               <Button
                 size="lg"
-                className="bg-gradient-gold text-primary-foreground font-semibold px-8 py-6 text-lg hover:opacity-90 transition-all shadow-gold"
+                className="bg-gradient-gold text-primary-foreground font-semibold px-6 sm:px-8 py-5 sm:py-6 text-base sm:text-lg hover:opacity-90 transition-all shadow-gold"
               >
                 Calculate Your AI ROI
                 <ArrowRight className="ml-2" size={20} />
@@ -45,7 +45,7 @@ export const CTA = () => {
               <Button 
                 size="lg" 
                 variant="outline" 
-                className="border-border text-foreground hover:bg-secondary px-8 py-6 text-lg"
+                className="border-border text-foreground hover:bg-secondary px-6 sm:px-8 py-5 sm:py-6 text-base sm:text-lg"
               >
                 View Open Jobs
               </Button>

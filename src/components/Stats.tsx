@@ -51,8 +51,8 @@ export const Stats = () => {
   return (
     <section className="py-20">
       <div ref={ref} className="container mx-auto px-6">
-        <div className="bg-gradient-card rounded-3xl border border-border p-12 md:p-16">
-          <div className="grid grid-cols-3 gap-12">
+        <div className="bg-gradient-card rounded-2xl sm:rounded-3xl border border-border p-6 sm:p-12 md:p-16">
+          <div className="grid grid-cols-3 gap-4 sm:gap-12">
             {stats.map((stat, index) => (
               <StatItem key={stat.label} stat={stat} isVisible={isVisible} delay={index * 100} />
             ))}
@@ -84,10 +84,10 @@ const StatItem = ({
         transition: `all 0.6s ease-out ${delay}ms`
       }}
     >
-      <div className="font-display text-4xl md:text-5xl lg:text-6xl font-bold text-gradient-gold mb-2">
+      <div className="font-display text-2xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-gradient-gold mb-1 sm:mb-2">
         {count}{stat.suffix}
       </div>
-      <p className="text-muted-foreground font-medium">{stat.label}</p>
+      <p className="text-xs sm:text-base text-muted-foreground font-medium">{stat.label}</p>
     </div>
   );
 };
