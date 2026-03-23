@@ -132,6 +132,7 @@ interface ZohoApplication {
   Application_Owner: any; // The owner/recruiter assigned
   Account_Manager: any;   // Account manager on the job
   Assigned_Recruiter: any; // Often empty array
+  Candidate_Id: any;       // Link to Candidates module
 }
 
 // Get the best recruiter name: prefer Assigned_Recruiter, fall back to Application_Owner
@@ -149,12 +150,45 @@ function getRecruiter(app: ZohoApplication): string {
   return 'Unassigned';
 }
 
+// Fetch recruiter names from the Candidates module for a list of candidate IDs
+async function fetchCandidateRecruiters(accessToken: string, candidateIds: string[]): Promise<Map<string, string>> {
+  const recruiterMap = new Map<string, string>();
+  if (candidateIds.length === 0) return recruiterMap;
+
+  // Batch into chunks of 20 to avoid rate limits
+  const chunkSize = 20;
+  for (let i = 0; i < candidateIds.length; i += chunkSize) {
+    const chunk = candidateIds.slice(i, i + chunkSize);
+    const results = await Promise.allSettled(
+      chunk.map(async (id) => {
+        const url = `https://recruit.zoho.com/recruit/v2/Candidates/${id}?fields=Recruiter`;
+        const response = await fetch(url, {
+          headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) return { id, recruiter: 'Unassigned' };
+        const data = await response.json();
+        const candidate = data.data?.[0];
+        if (!candidate?.Recruiter) return { id, recruiter: 'Unassigned' };
+        const rec = candidate.Recruiter;
+        const name = typeof rec === 'string' ? rec : rec?.name || zohoStr(rec, 'Unassigned');
+        return { id, recruiter: name };
+      })
+    );
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        recruiterMap.set(result.value.id, result.value.recruiter);
+      }
+    }
+  }
+  return recruiterMap;
+}
+
 async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?: string): Promise<ZohoApplication[]> {
   const allApps: ZohoApplication[] = [];
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Full_Name,Job_Opening_Name,Client_Name,Application_Status,Created_Time,Updated_On,Last_Activity_Time,Application_Owner,Account_Manager,Assigned_Recruiter&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
+    const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Full_Name,Job_Opening_Name,Client_Name,Application_Status,Created_Time,Updated_On,Last_Activity_Time,Application_Owner,Account_Manager,Assigned_Recruiter,Candidate_Id&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
     const response = await fetch(url, { headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' } });
     if (!response.ok) { if (response.status === 204) break; throw new Error(`Zoho Recruit API error: ${response.status}`); }
     const data = await response.json();
@@ -437,22 +471,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return null;
     }
 
-    const interviewPipeline = applications
-      .filter((app) => {
-        const label = getInterviewStageLabel(app.Application_Status || '');
-        return label !== null;
+    // Filter to interview-stage applications first
+    const interviewApps = applications.filter((app) => {
+      const label = getInterviewStageLabel(app.Application_Status || '');
+      return label !== null;
+    });
+
+    // Fetch recruiter names from Candidates module for interview pipeline candidates
+    const interviewCandidateIds = interviewApps
+      .map((app) => {
+        const cid = app.Candidate_Id;
+        if (!cid) return null;
+        if (typeof cid === 'string') return cid;
+        if (typeof cid === 'object' && cid.id) return String(cid.id);
+        return null;
       })
-      .map((app) => ({
-        candidateName: app.Full_Name || 'Unknown',
-        jobTitle: app.Job_Opening_Name || 'Unknown',
-        clientName: zohoStr(app.Client_Name),
-        recruiter: getRecruiter(app),
-        interviewStage: getInterviewStageLabel(app.Application_Status || '') || 'Unknown',
-        stageOrder: INTERVIEW_STAGE_ORDER[app.Application_Status.toLowerCase().trim()] || 0,
-        daysInStage: daysBetween(new Date(app.Updated_On), now),
-        createdDate: app.Created_Time.split('T')[0],
-        lastUpdated: app.Updated_On.split('T')[0],
-      }))
+      .filter((id): id is string => id !== null);
+
+    const candidateRecruiterMap = await fetchCandidateRecruiters(accessToken, interviewCandidateIds);
+
+    const interviewPipeline = interviewApps
+      .map((app) => {
+        // Resolve Candidate_Id to a string
+        const cid = app.Candidate_Id;
+        const candidateId = cid ? (typeof cid === 'string' ? cid : cid.id ? String(cid.id) : null) : null;
+        return {
+          candidateName: app.Full_Name || 'Unknown',
+          jobTitle: app.Job_Opening_Name || 'Unknown',
+          clientName: zohoStr(app.Client_Name),
+          recruiter: getRecruiter(app),
+          candidateRecruiter: candidateId ? (candidateRecruiterMap.get(candidateId) || 'Unassigned') : 'Unassigned',
+          interviewStage: getInterviewStageLabel(app.Application_Status || '') || 'Unknown',
+          stageOrder: INTERVIEW_STAGE_ORDER[app.Application_Status.toLowerCase().trim()] || 0,
+          daysInStage: daysBetween(new Date(app.Updated_On), now),
+          createdDate: app.Created_Time.split('T')[0],
+          lastUpdated: app.Updated_On.split('T')[0],
+        };
+      })
       .sort((a, b) => b.stageOrder - a.stageOrder || a.daysInStage - b.daysInStage);
 
     const interviewStageCounts: Record<string, number> = {};

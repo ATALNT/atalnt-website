@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "roi-calculator",
-      "runtimeExecutable": "/usr/local/bin/npx",
-      "runtimeArgs": ["vite", "--port", "3334", "--host"],
-      "port": 3334
+      "name": "dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "5173", "--host"],
+      "port": 5173
     }
   ]
 }

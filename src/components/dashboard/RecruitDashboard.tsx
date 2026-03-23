@@ -290,6 +290,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                     <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Stage</TableHead>
                     <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Job Opening</TableHead>
                     <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Client</TableHead>
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Ops</TableHead>
                     <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Recruiter</TableHead>
                     <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Days in Stage</TableHead>
                   </TableRow>
@@ -315,6 +316,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                         <TableCell className="text-white/50 text-sm max-w-[200px] truncate">{item.jobTitle}</TableCell>
                         <TableCell className="text-white/50 text-sm">{item.clientName}</TableCell>
                         <TableCell className="text-white/50 text-sm">{item.recruiter}</TableCell>
+                        <TableCell className="text-white/50 text-sm">{item.candidateRecruiter || 'Unassigned'}</TableCell>
                         <TableCell className="text-right">
                           <Badge
                             variant="secondary"
