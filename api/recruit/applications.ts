@@ -214,7 +214,7 @@ async function fetchJobClientMap(accessToken: string): Promise<Map<string, strin
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Job_Openings?fields=Posting_Title,Client_Name,Account_Name,Contact_Name&page=${page}&per_page=200`;
+    const url = `https://recruit.zoho.com/recruit/v2/Job_Openings?fields=Posting_Title,Client_Name,Account_Name,Contact_Name,Client&page=${page}&per_page=200`;
     const response = await fetch(url, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
     });
@@ -228,8 +228,8 @@ async function fetchJobClientMap(accessToken: string): Promise<Map<string, strin
       }
       for (const job of data.data) {
         const title = job.Posting_Title;
-        // Try multiple possible client fields
-        const client = zohoStr(job.Account_Name, '') || zohoStr(job.Client_Name, '') || zohoStr(job.Contact_Name, '');
+        // Try multiple possible client fields - Zoho UI label "CLIENT" may map to different API names
+        const client = zohoStr(job.Client, '') || zohoStr(job.Account_Name, '') || zohoStr(job.Client_Name, '') || zohoStr(job.Contact_Name, '');
         if (title && client) clientMap.set(title, client);
       }
     }
