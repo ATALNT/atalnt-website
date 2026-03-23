@@ -296,7 +296,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                     {[
                       { key: 'jobTitle', label: 'Job Title', align: '' },
                       { key: 'clientName', label: 'Client', align: '' },
-                      { key: 'priorityTier', label: 'Tier', align: '' },
+                      { key: 'priorityTier', label: 'Priority', align: '' },
                       { key: 'numberOfPositions', label: 'Positions', align: 'text-right' },
                       { key: 'totalSubmissions', label: 'Submissions', align: 'text-right' },
                       { key: 'daysOpen', label: 'Days Open', align: 'text-right' },
