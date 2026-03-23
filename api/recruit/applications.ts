@@ -232,6 +232,13 @@ async function fetchJobInfoMap(accessToken: string): Promise<Map<string, JobInfo
     if (!response.ok) { if (response.status === 204) break; break; }
     const data = await response.json();
     if (data.data) {
+      // DEBUG: Log first job's raw fields to find the correct priority/tier field name
+      if (page === 1 && data.data.length > 0) {
+        const sample = data.data[0];
+        console.log('[DEBUG] Job Opening raw keys:', Object.keys(sample));
+        console.log('[DEBUG] Job Opening Priority raw:', JSON.stringify(sample.Priority));
+        console.log('[DEBUG] Job Opening first 800 chars:', JSON.stringify(sample).substring(0, 800));
+      }
       for (const job of data.data) {
         const title = job.Posting_Title;
         const client = zohoStr(job.Client, '') || zohoStr(job.Account_Name, '') || zohoStr(job.Client_Name, '') || zohoStr(job.Contact_Name, '');
