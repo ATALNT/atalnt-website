@@ -299,6 +299,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                       { key: 'priorityTier', label: 'Priority', align: '' },
                       { key: 'numberOfPositions', label: 'Positions', align: 'text-right' },
                       { key: 'totalSubmissions', label: 'Submissions', align: 'text-right' },
+                      { key: 'interviewCount', label: 'Interviews', align: 'text-right' },
                       { key: 'daysOpen', label: 'Days Open', align: 'text-right' },
                       { key: 'assignedRecruiter', label: 'Recruiter', align: '' },
                     ].map((col) => (
@@ -326,7 +327,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                   {[...openJobsReport].sort((a: any, b: any) => {
                     const k = openJobsSort.key;
                     const dir = openJobsSort.dir === 'asc' ? 1 : -1;
-                    if (k === 'daysOpen' || k === 'totalSubmissions' || k === 'numberOfPositions') return (a[k] - b[k]) * dir;
+                    if (k === 'daysOpen' || k === 'totalSubmissions' || k === 'numberOfPositions' || k === 'interviewCount') return (a[k] - b[k]) * dir;
                     if (k === 'priorityTier') {
                       const tierOrder = (t: string) => t === 'Tier 1' ? 1 : t === 'Tier 2' ? 2 : t === 'Tier 3' ? 3 : 4;
                       return (tierOrder(a[k]) - tierOrder(b[k])) * dir;
@@ -370,12 +371,20 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                               {job.totalSubmissions}
                             </Badge>
                           </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant="secondary" className={job.interviewCount > 0
+                              ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                              : 'bg-white/5 text-white/30 border border-white/10'
+                            }>
+                              {job.interviewCount}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="text-right text-white/50 text-sm">{job.daysOpen}d</TableCell>
                           <TableCell className="text-white/50 text-sm">{job.assignedRecruiter}</TableCell>
                         </TableRow>
                         {isExpanded && job.submittedCandidates.length > 0 && (
                           <TableRow key={`job-${i}-expanded`} className="border-white/[0.03] bg-white/[0.01]">
-                            <TableCell colSpan={7} className="p-0">
+                            <TableCell colSpan={8} className="p-0">
                               <div className="border-l-2 border-[#D4A853]/20 ml-4 pl-4 py-2">
                                 <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Submitted Candidates ({job.submittedCandidates.length})</p>
                                 <Table>
@@ -418,7 +427,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                         )}
                         {isExpanded && job.submittedCandidates.length === 0 && (
                           <TableRow key={`job-${i}-empty`} className="border-white/[0.03] bg-white/[0.01]">
-                            <TableCell colSpan={7}>
+                            <TableCell colSpan={8}>
                               <div className="border-l-2 border-[#D4A853]/20 ml-4 pl-4 py-3">
                                 <p className="text-white/30 text-sm">No submissions yet for this job</p>
                               </div>

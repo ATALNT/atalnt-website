@@ -557,6 +557,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       interviewStageCounts[item.interviewStage] = (interviewStageCounts[item.interviewStage] || 0) + 1;
     });
 
+    // Build interview count per job from the interviewPipeline
+    const interviewCountByJob = new Map<string, number>();
+    interviewPipeline.forEach((item) => {
+      const jt = item.jobTitle;
+      interviewCountByJob.set(jt, (interviewCountByJob.get(jt) || 0) + 1);
+    });
+
     // =============================================
     // 11. OPEN JOBS REPORT
     // =============================================
@@ -596,6 +603,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           daysOpen: info.createdTime ? daysBetween(new Date(info.createdTime), now) : 0,
           totalApplications: jobApps.length,
           totalSubmissions: submittedCandidates.length,
+          interviewCount: interviewCountByJob.get(jobTitle) || 0,
           submittedCandidates,
         };
       })
