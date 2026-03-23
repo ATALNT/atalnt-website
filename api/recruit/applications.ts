@@ -214,16 +214,22 @@ async function fetchJobClientMap(accessToken: string): Promise<Map<string, strin
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Job_Openings?fields=Posting_Title,Client_Name&page=${page}&per_page=200`;
+    const url = `https://recruit.zoho.com/recruit/v2/Job_Openings?fields=Posting_Title,Client_Name,Account_Name,Contact_Name&page=${page}&per_page=200`;
     const response = await fetch(url, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
     });
     if (!response.ok) { if (response.status === 204) break; break; }
     const data = await response.json();
     if (data.data) {
+      // DEBUG: Log first job's raw fields to find the right client field
+      if (page === 1 && data.data.length > 0) {
+        console.log('[DEBUG] First Job Opening raw keys:', Object.keys(data.data[0]));
+        console.log('[DEBUG] First Job Opening raw data:', JSON.stringify(data.data[0]).substring(0, 600));
+      }
       for (const job of data.data) {
         const title = job.Posting_Title;
-        const client = zohoStr(job.Client_Name, '');
+        // Try multiple possible client fields
+        const client = zohoStr(job.Account_Name, '') || zohoStr(job.Client_Name, '') || zohoStr(job.Contact_Name, '');
         if (title && client) clientMap.set(title, client);
       }
     }
