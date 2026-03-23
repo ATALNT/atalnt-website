@@ -208,13 +208,24 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
   return allApps;
 }
 
-// Fetch Job Openings to build a map of job title → actual client name
-async function fetchJobClientMap(accessToken: string): Promise<Map<string, string>> {
-  const clientMap = new Map<string, string>();
+// Rich job info returned from Job Openings
+interface JobInfo {
+  clientName: string;
+  priority: string;
+  status: string;
+  numberOfPositions: number;
+  createdTime: string;
+  city: string;
+  assignedRecruiter: string;
+}
+
+// Fetch Job Openings to build a map of job title → job info (client, priority, status, etc.)
+async function fetchJobInfoMap(accessToken: string): Promise<Map<string, JobInfo>> {
+  const jobMap = new Map<string, JobInfo>();
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Job_Openings?fields=Posting_Title,Client_Name,Account_Name,Contact_Name,Client&page=${page}&per_page=200`;
+    const url = `https://recruit.zoho.com/recruit/v2/Job_Openings?fields=Posting_Title,Client_Name,Account_Name,Contact_Name,Client,Priority,Job_Opening_Status,Number_of_Positions,Created_Time,City,Assigned_Recruiter&page=${page}&per_page=200`;
     const response = await fetch(url, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
     });
@@ -223,16 +234,25 @@ async function fetchJobClientMap(accessToken: string): Promise<Map<string, strin
     if (data.data) {
       for (const job of data.data) {
         const title = job.Posting_Title;
-        // Try multiple possible client fields - Zoho UI label "CLIENT" may map to different API names
         const client = zohoStr(job.Client, '') || zohoStr(job.Account_Name, '') || zohoStr(job.Client_Name, '') || zohoStr(job.Contact_Name, '');
-        if (title && client) clientMap.set(title, client);
+        if (title) {
+          jobMap.set(title, {
+            clientName: client,
+            priority: zohoStr(job.Priority, 'N/A'),
+            status: zohoStr(job.Job_Opening_Status, ''),
+            numberOfPositions: Number(job.Number_of_Positions) || 1,
+            createdTime: zohoStr(job.Created_Time, ''),
+            city: zohoStr(job.City, ''),
+            assignedRecruiter: zohoStr(job.Assigned_Recruiter, 'Unassigned'),
+          });
+        }
       }
     }
     hasMore = data.info?.more_records ?? false;
     page++;
     if (page > 25) break;
   }
-  return clientMap;
+  return jobMap;
 }
 
 function daysBetween(date1: Date, date2: Date): number {
@@ -252,9 +272,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { from, to } = req.query as { from?: string; to?: string };
     const accessToken = await getZohoAccessToken();
-    const [applications, jobClientMap] = await Promise.all([
+    const [applications, jobInfoMap] = await Promise.all([
       fetchApplications(accessToken, from, to),
-      fetchJobClientMap(accessToken),
+      fetchJobInfoMap(accessToken),
     ]);
     const now = new Date();
 
@@ -520,7 +540,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return {
           candidateName: fullName,
           jobTitle: app.Job_Opening_Name || 'Unknown',
-          clientName: (app.Job_Opening_Name && jobClientMap.get(app.Job_Opening_Name)) || zohoStr(app.Client_Name),
+          clientName: (app.Job_Opening_Name && jobInfoMap.get(app.Job_Opening_Name)?.clientName) || zohoStr(app.Client_Name),
           recruiter: getRecruiter(app),
           candidateRecruiter: candidateRecruiterMap.get(fullName) || 'Unassigned',
           interviewStage: getInterviewStageLabel(app.Application_Status || '') || 'Unknown',
@@ -538,7 +558,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // =============================================
-    // 11. DAILY VOLUME
+    // 11. OPEN JOBS REPORT
+    // =============================================
+    // Group all applications by job title for fast lookup
+    const appsByJob = new Map<string, typeof applications>();
+    for (const app of applications) {
+      const jobTitle = app.Job_Opening_Name || '';
+      if (!jobTitle) continue;
+      if (!appsByJob.has(jobTitle)) appsByJob.set(jobTitle, []);
+      appsByJob.get(jobTitle)!.push(app);
+    }
+
+    const openJobsReport = [...jobInfoMap.entries()]
+      .filter(([, info]) => info.status.toLowerCase() === 'in-progress')
+      .map(([jobTitle, info]) => {
+        const jobApps = appsByJob.get(jobTitle) || [];
+        const submittedCandidates = jobApps
+          .filter((app) => getMaxFunnelStage(app.Application_Status || '') >= 1)
+          .map((app) => ({
+            candidateName: app.Full_Name || 'Unknown',
+            currentStatus: app.Application_Status || 'Unknown',
+            recruiter: getRecruiter(app),
+            submittedDate: app.Created_Time?.split('T')[0] || '',
+            lastUpdated: app.Updated_On?.split('T')[0] || '',
+            daysInCurrentStage: daysBetween(new Date(app.Updated_On), now),
+            funnelStage: getMaxFunnelStage(app.Application_Status || ''),
+          }))
+          .sort((a, b) => b.funnelStage - a.funnelStage || a.candidateName.localeCompare(b.candidateName));
+
+        return {
+          jobTitle,
+          clientName: info.clientName || 'Unknown',
+          priorityTier: info.priority || 'N/A',
+          numberOfPositions: info.numberOfPositions,
+          city: info.city,
+          assignedRecruiter: info.assignedRecruiter,
+          daysOpen: info.createdTime ? daysBetween(new Date(info.createdTime), now) : 0,
+          totalApplications: jobApps.length,
+          totalSubmissions: submittedCandidates.length,
+          submittedCandidates,
+        };
+      })
+      .sort((a, b) => {
+        // Sort by tier first (Tier 1 > Tier 2 > Tier 3), then by submissions desc
+        const tierOrder = (t: string) => t === 'Tier 1' ? 1 : t === 'Tier 2' ? 2 : t === 'Tier 3' ? 3 : 4;
+        const tierDiff = tierOrder(a.priorityTier) - tierOrder(b.priorityTier);
+        if (tierDiff !== 0) return tierDiff;
+        return b.totalSubmissions - a.totalSubmissions;
+      });
+
+    // =============================================
+    // 12. DAILY VOLUME
     // =============================================
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const dailyVolume: Record<string, number> = {};
@@ -582,6 +652,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .map(([date, count]) => ({ date, count }))
           .sort((a, b) => a.date.localeCompare(b.date)),
         interviewPipeline,
+        openJobsReport,
         interviewStageCounts: Object.entries(interviewStageCounts)
           .map(([stage, count]) => ({ stage, count }))
           .sort((a, b) => {
