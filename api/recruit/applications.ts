@@ -225,7 +225,7 @@ async function fetchJobInfoMap(accessToken: string): Promise<Map<string, JobInfo
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Job_Openings?fields=Posting_Title,Client_Name,Account_Name,Contact_Name,Client,Priority1,Job_Opening_Status,Number_of_Positions,Created_Time,City,Assigned_Recruiter&page=${page}&per_page=200`;
+    const url = `https://recruit.zoho.com/recruit/v2/Job_Openings?fields=Posting_Title,Client_Name,Account_Name,Contact_Name,Client,Priority1,Required_Skills,Job_Opening_Status,Number_of_Positions,Created_Time,City,Assigned_Recruiter&page=${page}&per_page=200`;
     const response = await fetch(url, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
     });
@@ -244,6 +244,7 @@ async function fetchJobInfoMap(accessToken: string): Promise<Map<string, JobInfo
             createdTime: zohoStr(job.Created_Time, ''),
             city: zohoStr(job.City, ''),
             assignedRecruiter: zohoStr(job.Assigned_Recruiter, 'Unassigned'),
+            requiredSkills: zohoStr(job.Required_Skills, ''),
           });
         }
       }
@@ -600,6 +601,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           numberOfPositions: info.numberOfPositions,
           city: info.city,
           assignedRecruiter: info.assignedRecruiter,
+          requiredSkills: info.requiredSkills || '',
           daysOpen: info.createdTime ? daysBetween(new Date(info.createdTime), now) : 0,
           totalApplications: jobApps.length,
           totalSubmissions: submittedCandidates.length,

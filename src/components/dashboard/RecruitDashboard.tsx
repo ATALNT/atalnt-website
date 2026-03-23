@@ -301,6 +301,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                       { key: 'totalSubmissions', label: 'Submissions', align: 'text-right' },
                       { key: 'interviewCount', label: 'Interviews', align: 'text-right' },
                       { key: 'daysOpen', label: 'Days Open', align: 'text-right' },
+                      { key: 'requiredSkills', label: 'Required Skills', align: '' },
                       { key: 'assignedRecruiter', label: 'Recruiter', align: '' },
                     ].map((col) => (
                       <TableHead
@@ -380,11 +381,12 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right text-white/50 text-sm">{job.daysOpen}d</TableCell>
+                          <TableCell className="text-white/40 text-xs max-w-[200px] truncate" title={job.requiredSkills}>{job.requiredSkills || '—'}</TableCell>
                           <TableCell className="text-white/50 text-sm">{job.assignedRecruiter}</TableCell>
                         </TableRow>
                         {isExpanded && job.submittedCandidates.length > 0 && (
                           <TableRow key={`job-${i}-expanded`} className="border-white/[0.03] bg-white/[0.01]">
-                            <TableCell colSpan={8} className="p-0">
+                            <TableCell colSpan={9} className="p-0">
                               <div className="border-l-2 border-[#D4A853]/20 ml-4 pl-4 py-2">
                                 <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">Submitted Candidates ({job.submittedCandidates.length})</p>
                                 <Table>
@@ -427,7 +429,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                         )}
                         {isExpanded && job.submittedCandidates.length === 0 && (
                           <TableRow key={`job-${i}-empty`} className="border-white/[0.03] bg-white/[0.01]">
-                            <TableCell colSpan={8}>
+                            <TableCell colSpan={9}>
                               <div className="border-l-2 border-[#D4A853]/20 ml-4 pl-4 py-3">
                                 <p className="text-white/30 text-sm">No submissions yet for this job</p>
                               </div>
