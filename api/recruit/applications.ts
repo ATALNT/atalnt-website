@@ -150,38 +150,42 @@ function getRecruiter(app: ZohoApplication): string {
   return 'Unassigned';
 }
 
-// Fetch recruiter names from the Candidates module for a list of candidate IDs
-async function fetchCandidateRecruiters(accessToken: string, candidateIds: string[]): Promise<Map<string, string>> {
+// Fetch recruiter names from the Candidates module by searching candidate names
+async function fetchCandidateRecruiters(accessToken: string, candidateNames: string[]): Promise<Map<string, string>> {
   const recruiterMap = new Map<string, string>();
-  console.log('[DEBUG] fetchCandidateRecruiters called with', candidateIds.length, 'IDs:', candidateIds.slice(0, 3));
-  if (candidateIds.length === 0) return recruiterMap;
+  if (candidateNames.length === 0) return recruiterMap;
 
-  // Batch into chunks of 20 to avoid rate limits
-  const chunkSize = 20;
-  for (let i = 0; i < candidateIds.length; i += chunkSize) {
-    const chunk = candidateIds.slice(i, i + chunkSize);
+  // Batch into chunks of 10 to avoid rate limits (search is heavier than direct lookup)
+  const chunkSize = 10;
+  for (let i = 0; i < candidateNames.length; i += chunkSize) {
+    const chunk = candidateNames.slice(i, i + chunkSize);
     const results = await Promise.allSettled(
-      chunk.map(async (id) => {
-        const url = `https://recruit.zoho.com/recruit/v2/Candidates/${id}?fields=Recruiter`;
-        const response = await fetch(url, {
+      chunk.map(async (fullName) => {
+        // Search Candidates module by Full_Name
+        const searchUrl = `https://recruit.zoho.com/recruit/v2/Candidates/search?criteria=(Full_Name:equals:${encodeURIComponent(fullName)})&fields=Full_Name,Recruiter`;
+        const response = await fetch(searchUrl, {
           headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
         });
         if (!response.ok) {
-          console.log(`[DEBUG] Candidate ${id} fetch failed: ${response.status}`);
-          return { id, recruiter: 'Unassigned' };
+          console.log(`[DEBUG] Candidate search for "${fullName}" failed: ${response.status}`);
+          return { name: fullName, recruiter: 'Unassigned' };
         }
         const data = await response.json();
-        console.log(`[DEBUG] Candidate ${id} raw response:`, JSON.stringify(data).substring(0, 300));
         const candidate = data.data?.[0];
-        if (!candidate?.Recruiter) return { id, recruiter: 'Unassigned' };
+        if (!candidate) {
+          console.log(`[DEBUG] No candidate found for "${fullName}"`);
+          return { name: fullName, recruiter: 'Unassigned' };
+        }
+        console.log(`[DEBUG] Candidate "${fullName}" raw:`, JSON.stringify(candidate).substring(0, 300));
+        if (!candidate.Recruiter) return { name: fullName, recruiter: 'Unassigned' };
         const rec = candidate.Recruiter;
-        const name = typeof rec === 'string' ? rec : rec?.name || zohoStr(rec, 'Unassigned');
-        return { id, recruiter: name };
+        const recruiterName = typeof rec === 'string' ? rec : rec?.name || zohoStr(rec, 'Unassigned');
+        return { name: fullName, recruiter: recruiterName };
       })
     );
     for (const result of results) {
       if (result.status === 'fulfilled') {
-        recruiterMap.set(result.value.id, result.value.recruiter);
+        recruiterMap.set(result.value.name, result.value.recruiter);
       }
     }
   }
@@ -193,7 +197,7 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Full_Name,Job_Opening_Name,Client_Name,Application_Status,Created_Time,Updated_On,Last_Activity_Time,Application_Owner,Account_Manager,Assigned_Recruiter,Candidate_Id&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
+    const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Full_Name,Job_Opening_Name,Client_Name,Application_Status,Created_Time,Updated_On,Last_Activity_Time,Application_Owner,Account_Manager,Assigned_Recruiter&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
     const response = await fetch(url, { headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' } });
     if (!response.ok) { if (response.status === 204) break; throw new Error(`Zoho Recruit API error: ${response.status}`); }
     const data = await response.json();
@@ -482,38 +486,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return label !== null;
     });
 
-    // DEBUG: Log first interview app to see Candidate_Id field structure
-    if (interviewApps.length > 0) {
-      const sample = interviewApps[0];
-      console.log('[DEBUG] Sample interview app keys:', Object.keys(sample));
-      console.log('[DEBUG] Sample Candidate_Id:', JSON.stringify(sample.Candidate_Id));
-      console.log('[DEBUG] Sample full app (truncated):', JSON.stringify(sample).substring(0, 500));
-    }
+    // Fetch recruiter names from Candidates module by candidate name
+    const candidateNames = interviewApps
+      .map((app) => app.Full_Name || '')
+      .filter((name) => name.length > 0);
 
-    // Fetch recruiter names from Candidates module for interview pipeline candidates
-    const interviewCandidateIds = interviewApps
-      .map((app) => {
-        const cid = app.Candidate_Id;
-        if (!cid) return null;
-        if (typeof cid === 'string') return cid;
-        if (typeof cid === 'object' && cid.id) return String(cid.id);
-        return null;
-      })
-      .filter((id): id is string => id !== null);
-
-    const candidateRecruiterMap = await fetchCandidateRecruiters(accessToken, interviewCandidateIds);
+    const candidateRecruiterMap = await fetchCandidateRecruiters(accessToken, [...new Set(candidateNames)]);
 
     const interviewPipeline = interviewApps
       .map((app) => {
-        // Resolve Candidate_Id to a string
-        const cid = app.Candidate_Id;
-        const candidateId = cid ? (typeof cid === 'string' ? cid : cid.id ? String(cid.id) : null) : null;
+        const fullName = app.Full_Name || 'Unknown';
         return {
-          candidateName: app.Full_Name || 'Unknown',
+          candidateName: fullName,
           jobTitle: app.Job_Opening_Name || 'Unknown',
           clientName: zohoStr(app.Client_Name),
           recruiter: getRecruiter(app),
-          candidateRecruiter: candidateId ? (candidateRecruiterMap.get(candidateId) || 'Unassigned') : 'Unassigned',
+          candidateRecruiter: candidateRecruiterMap.get(fullName) || 'Unassigned',
           interviewStage: getInterviewStageLabel(app.Application_Status || '') || 'Unknown',
           stageOrder: INTERVIEW_STAGE_ORDER[app.Application_Status.toLowerCase().trim()] || 0,
           daysInStage: daysBetween(new Date(app.Updated_On), now),
