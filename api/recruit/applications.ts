@@ -132,7 +132,6 @@ interface ZohoApplication {
   Application_Owner: any; // The owner/recruiter assigned
   Account_Manager: any;   // Account manager on the job
   Assigned_Recruiter: any; // Often empty array
-  Candidate_Id: any;       // Link to Candidates module
 }
 
 // Get the best recruiter name: prefer Assigned_Recruiter, fall back to Application_Owner
@@ -166,18 +165,10 @@ async function fetchCandidateRecruiters(accessToken: string, candidateNames: str
         const response = await fetch(searchUrl, {
           headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
         });
-        if (!response.ok) {
-          console.log(`[DEBUG] Candidate search for "${fullName}" failed: ${response.status}`);
-          return { name: fullName, recruiter: 'Unassigned' };
-        }
+        if (!response.ok) return { name: fullName, recruiter: 'Unassigned' };
         const data = await response.json();
         const candidate = data.data?.[0];
-        if (!candidate) {
-          console.log(`[DEBUG] No candidate found for "${fullName}"`);
-          return { name: fullName, recruiter: 'Unassigned' };
-        }
-        console.log(`[DEBUG] Candidate "${fullName}" raw:`, JSON.stringify(candidate).substring(0, 300));
-        if (!candidate.Recruiter) return { name: fullName, recruiter: 'Unassigned' };
+        if (!candidate?.Recruiter) return { name: fullName, recruiter: 'Unassigned' };
         const rec = candidate.Recruiter;
         const recruiterName = typeof rec === 'string' ? rec : rec?.name || zohoStr(rec, 'Unassigned');
         return { name: fullName, recruiter: recruiterName };
