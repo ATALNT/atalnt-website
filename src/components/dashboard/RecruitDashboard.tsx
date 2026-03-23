@@ -109,6 +109,8 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const pipeline = appsData?.pipelineByStatus || [];
   const rejectionBreakdown = appsData?.rejectionBreakdown || [];
   const submissionsByRecruiter = appsData?.submissionsByRecruiter || [];
+  const interviewPipeline = appsData?.interviewPipeline || [];
+  const interviewStageCounts = appsData?.interviewStageCounts || [];
 
   return (
     <div className="space-y-6">
@@ -253,6 +255,91 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
           accent={overview.totalStale > 0}
         />
       </div>
+
+      {/* ============================================ */}
+      {/* INTERVIEW PIPELINE                           */}
+      {/* Active candidates in interview stages        */}
+      {/* ============================================ */}
+      <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-purple-500/30 to-transparent" />
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+              <Users className="h-3.5 w-3.5 text-purple-400/60" />
+              Interview Pipeline
+            </CardTitle>
+            <div className="flex items-center gap-3">
+              {interviewStageCounts.map((s: any) => (
+                <span key={s.stage} className="text-[10px] text-white/40">
+                  {s.stage}: <span className="text-purple-400 font-semibold">{s.count}</span>
+                </span>
+              ))}
+              <Badge variant="secondary" className="bg-purple-500/10 text-purple-400 border border-purple-500/20 text-xs">
+                {interviewPipeline.length} Total
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {interviewPipeline.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/[0.04] hover:bg-transparent">
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Candidate</TableHead>
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Stage</TableHead>
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Job Opening</TableHead>
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Client</TableHead>
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Recruiter</TableHead>
+                    <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Days in Stage</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {interviewPipeline.slice(0, 25).map((item: any, i: number) => {
+                    const stageColor = item.interviewStage === '3rd Interview' ? '#6d28d9'
+                      : item.interviewStage === '2nd Interview' ? '#7c3aed'
+                      : '#8b5cf6';
+                    return (
+                      <TableRow key={`${item.candidateName}-${i}`} className="border-white/[0.03] hover:bg-white/[0.02]">
+                        <TableCell className="font-medium text-white/80">{item.candidateName}</TableCell>
+                        <TableCell>
+                          <Badge variant="secondary" className="text-[10px]" style={{
+                            backgroundColor: `${stageColor}15`,
+                            color: stageColor,
+                            borderColor: `${stageColor}30`,
+                            borderWidth: 1,
+                          }}>
+                            {item.interviewStage}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-white/50 text-sm max-w-[200px] truncate">{item.jobTitle}</TableCell>
+                        <TableCell className="text-white/50 text-sm">{item.clientName}</TableCell>
+                        <TableCell className="text-white/50 text-sm">{item.recruiter}</TableCell>
+                        <TableCell className="text-right">
+                          <Badge
+                            variant="secondary"
+                            className={
+                              item.daysInStage > 7
+                                ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                : item.daysInStage > 3
+                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            }
+                          >
+                            {item.daysInStage}d
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="text-center text-white/30 py-8">No candidates currently in interview stages</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ============================================ */}
       {/* CONVERSION FUNNEL                            */}

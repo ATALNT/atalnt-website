@@ -420,7 +420,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // =============================================
-    // 10. DAILY VOLUME
+    // 10. INTERVIEW PIPELINE
+    // Active candidates currently in any interview stage
+    // =============================================
+    const INTERVIEW_STAGE_ORDER: Record<string, number> = {
+      'interview-scheduled': 1,
+      '2nd interview-scheduled': 2,
+      '3rd interview-scheduled': 3,
+    };
+
+    function getInterviewStageLabel(status: string): string | null {
+      const s = status.toLowerCase().trim();
+      if (s === 'interview-scheduled') return 'Interview Scheduled';
+      if (s === '2nd interview-scheduled') return '2nd Interview';
+      if (s === '3rd interview-scheduled') return '3rd Interview';
+      return null;
+    }
+
+    const interviewPipeline = applications
+      .filter((app) => {
+        const label = getInterviewStageLabel(app.Application_Status || '');
+        return label !== null;
+      })
+      .map((app) => ({
+        candidateName: app.Full_Name || 'Unknown',
+        jobTitle: app.Job_Opening_Name || 'Unknown',
+        clientName: zohoStr(app.Client_Name),
+        recruiter: getRecruiter(app),
+        interviewStage: getInterviewStageLabel(app.Application_Status || '') || 'Unknown',
+        stageOrder: INTERVIEW_STAGE_ORDER[app.Application_Status.toLowerCase().trim()] || 0,
+        daysInStage: daysBetween(new Date(app.Updated_On), now),
+        createdDate: app.Created_Time.split('T')[0],
+        lastUpdated: app.Updated_On.split('T')[0],
+      }))
+      .sort((a, b) => b.stageOrder - a.stageOrder || a.daysInStage - b.daysInStage);
+
+    const interviewStageCounts: Record<string, number> = {};
+    interviewPipeline.forEach((item) => {
+      interviewStageCounts[item.interviewStage] = (interviewStageCounts[item.interviewStage] || 0) + 1;
+    });
+
+    // =============================================
+    // 11. DAILY VOLUME
     // =============================================
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const dailyVolume: Record<string, number> = {};
@@ -463,6 +504,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dailyVolume: Object.entries(dailyVolume)
           .map(([date, count]) => ({ date, count }))
           .sort((a, b) => a.date.localeCompare(b.date)),
+        interviewPipeline,
+        interviewStageCounts: Object.entries(interviewStageCounts)
+          .map(([stage, count]) => ({ stage, count }))
+          .sort((a, b) => {
+            const order: Record<string, number> = { 'Interview Scheduled': 1, '2nd Interview': 2, '3rd Interview': 3 };
+            return (order[a.stage] || 0) - (order[b.stage] || 0);
+          }),
       },
       timestamp: new Date().toISOString(),
     });
