@@ -153,6 +153,7 @@ function getRecruiter(app: ZohoApplication): string {
 // Fetch recruiter names from the Candidates module for a list of candidate IDs
 async function fetchCandidateRecruiters(accessToken: string, candidateIds: string[]): Promise<Map<string, string>> {
   const recruiterMap = new Map<string, string>();
+  console.log('[DEBUG] fetchCandidateRecruiters called with', candidateIds.length, 'IDs:', candidateIds.slice(0, 3));
   if (candidateIds.length === 0) return recruiterMap;
 
   // Batch into chunks of 20 to avoid rate limits
@@ -165,8 +166,12 @@ async function fetchCandidateRecruiters(accessToken: string, candidateIds: strin
         const response = await fetch(url, {
           headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
         });
-        if (!response.ok) return { id, recruiter: 'Unassigned' };
+        if (!response.ok) {
+          console.log(`[DEBUG] Candidate ${id} fetch failed: ${response.status}`);
+          return { id, recruiter: 'Unassigned' };
+        }
         const data = await response.json();
+        console.log(`[DEBUG] Candidate ${id} raw response:`, JSON.stringify(data).substring(0, 300));
         const candidate = data.data?.[0];
         if (!candidate?.Recruiter) return { id, recruiter: 'Unassigned' };
         const rec = candidate.Recruiter;
@@ -476,6 +481,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const label = getInterviewStageLabel(app.Application_Status || '');
       return label !== null;
     });
+
+    // DEBUG: Log first interview app to see Candidate_Id field structure
+    if (interviewApps.length > 0) {
+      const sample = interviewApps[0];
+      console.log('[DEBUG] Sample interview app keys:', Object.keys(sample));
+      console.log('[DEBUG] Sample Candidate_Id:', JSON.stringify(sample.Candidate_Id));
+      console.log('[DEBUG] Sample full app (truncated):', JSON.stringify(sample).substring(0, 500));
+    }
 
     // Fetch recruiter names from Candidates module for interview pipeline candidates
     const interviewCandidateIds = interviewApps
