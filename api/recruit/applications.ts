@@ -208,6 +208,32 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
   return allApps;
 }
 
+// Fetch Job Openings to build a map of job title → actual client name
+async function fetchJobClientMap(accessToken: string): Promise<Map<string, string>> {
+  const clientMap = new Map<string, string>();
+  let page = 1;
+  let hasMore = true;
+  while (hasMore) {
+    const url = `https://recruit.zoho.com/recruit/v2/Job_Openings?fields=Posting_Title,Client_Name&page=${page}&per_page=200`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) { if (response.status === 204) break; break; }
+    const data = await response.json();
+    if (data.data) {
+      for (const job of data.data) {
+        const title = job.Posting_Title;
+        const client = zohoStr(job.Client_Name, '');
+        if (title && client) clientMap.set(title, client);
+      }
+    }
+    hasMore = data.info?.more_records ?? false;
+    page++;
+    if (page > 25) break;
+  }
+  return clientMap;
+}
+
 function daysBetween(date1: Date, date2: Date): number {
   const t1 = date1.getTime();
   const t2 = date2.getTime();
@@ -225,7 +251,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { from, to } = req.query as { from?: string; to?: string };
     const accessToken = await getZohoAccessToken();
-    const applications = await fetchApplications(accessToken, from, to);
+    const [applications, jobClientMap] = await Promise.all([
+      fetchApplications(accessToken, from, to),
+      fetchJobClientMap(accessToken),
+    ]);
     const now = new Date();
 
     // =============================================
@@ -490,7 +519,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return {
           candidateName: fullName,
           jobTitle: app.Job_Opening_Name || 'Unknown',
-          clientName: zohoStr(app.Client_Name),
+          clientName: (app.Job_Opening_Name && jobClientMap.get(app.Job_Opening_Name)) || zohoStr(app.Client_Name),
           recruiter: getRecruiter(app),
           candidateRecruiter: candidateRecruiterMap.get(fullName) || 'Unassigned',
           interviewStage: getInterviewStageLabel(app.Application_Status || '') || 'Unknown',
