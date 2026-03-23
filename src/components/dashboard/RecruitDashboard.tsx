@@ -9,7 +9,7 @@ import { fetchRecruitJobs, fetchRecruitApplications } from '@/lib/dashboard-api'
 import {
   Briefcase, Users, Send, Trophy, AlertTriangle, Clock, TrendingDown,
   ChevronDown, ChevronUp, ArrowRight, HelpCircle, Building2, UserCheck,
-  Zap, AlertCircle, Info, FileText
+  Zap, AlertCircle, Info, FileText, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 
 // Colors for funnel stages (from API)
@@ -64,6 +64,7 @@ interface RecruitDashboardProps {
 
 export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashboardProps) {
   const [showHelp, setShowHelp] = useState(false);
+  const [interviewSort, setInterviewSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'stageOrder', dir: 'desc' });
 
   const jobsQuery = useQuery({
     queryKey: ['recruit', 'jobs'],
@@ -286,17 +287,42 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
               <Table>
                 <TableHeader>
                   <TableRow className="border-white/[0.04] hover:bg-transparent">
-                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Candidate</TableHead>
-                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Stage</TableHead>
-                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Job Opening</TableHead>
-                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Client</TableHead>
-                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Ops</TableHead>
-                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Recruiter</TableHead>
-                    <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Days in Stage</TableHead>
+                    {[
+                      { key: 'candidateName', label: 'Candidate', align: '' },
+                      { key: 'interviewStage', label: 'Stage', align: '' },
+                      { key: 'jobTitle', label: 'Job Opening', align: '' },
+                      { key: 'clientName', label: 'Client', align: '' },
+                      { key: 'recruiter', label: 'Ops', align: '' },
+                      { key: 'candidateRecruiter', label: 'Recruiter', align: '' },
+                      { key: 'daysInStage', label: 'Days in Stage', align: 'text-right' },
+                    ].map((col) => (
+                      <TableHead
+                        key={col.key}
+                        className={`text-white/25 text-[10px] uppercase tracking-widest cursor-pointer hover:text-white/50 select-none transition-colors ${col.align}`}
+                        onClick={() => setInterviewSort((prev) => ({
+                          key: col.key,
+                          dir: prev.key === col.key && prev.dir === 'asc' ? 'desc' : 'asc',
+                        }))}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {interviewSort.key === col.key ? (
+                            interviewSort.dir === 'asc' ? <ArrowUp className="h-3 w-3 text-purple-400" /> : <ArrowDown className="h-3 w-3 text-purple-400" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-30" />
+                          )}
+                        </span>
+                      </TableHead>
+                    ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {interviewPipeline.slice(0, 25).map((item: any, i: number) => {
+                  {[...interviewPipeline].sort((a: any, b: any) => {
+                    const k = interviewSort.key;
+                    const dir = interviewSort.dir === 'asc' ? 1 : -1;
+                    if (k === 'daysInStage' || k === 'stageOrder') return (a[k] - b[k]) * dir;
+                    return String(a[k] || '').localeCompare(String(b[k] || '')) * dir;
+                  }).slice(0, 25).map((item: any, i: number) => {
                     const stageColor = item.interviewStage === '3rd Interview' ? '#6d28d9'
                       : item.interviewStage === '2nd Interview' ? '#7c3aed'
                       : '#8b5cf6';

@@ -221,11 +221,6 @@ async function fetchJobClientMap(accessToken: string): Promise<Map<string, strin
     if (!response.ok) { if (response.status === 204) break; break; }
     const data = await response.json();
     if (data.data) {
-      // DEBUG: Log first job's raw fields to find the right client field
-      if (page === 1 && data.data.length > 0) {
-        console.log('[DEBUG] First Job Opening raw keys:', Object.keys(data.data[0]));
-        console.log('[DEBUG] First Job Opening raw data:', JSON.stringify(data.data[0]).substring(0, 600));
-      }
       for (const job of data.data) {
         const title = job.Posting_Title;
         // Try multiple possible client fields - Zoho UI label "CLIENT" may map to different API names
@@ -518,17 +513,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .filter((name) => name.length > 0);
 
     const candidateRecruiterMap = await fetchCandidateRecruiters(accessToken, [...new Set(candidateNames)]);
-
-    // DEBUG: Log what we're getting for client resolution
-    if (interviewApps.length > 0) {
-      const sample = interviewApps[0];
-      console.log('[DEBUG] Sample app Job_Opening_Name:', JSON.stringify(sample.Job_Opening_Name));
-      console.log('[DEBUG] Sample app Client_Name raw:', JSON.stringify(sample.Client_Name));
-      console.log('[DEBUG] jobClientMap size:', jobClientMap.size);
-      console.log('[DEBUG] jobClientMap first 5 entries:', JSON.stringify([...jobClientMap.entries()].slice(0, 5)));
-      const resolved = sample.Job_Opening_Name ? jobClientMap.get(sample.Job_Opening_Name) : undefined;
-      console.log('[DEBUG] Resolved client from job map:', resolved);
-    }
 
     const interviewPipeline = interviewApps
       .map((app) => {
