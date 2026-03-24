@@ -149,36 +149,33 @@ function getRecruiter(app: ZohoApplication): string {
   return 'Unassigned';
 }
 
-// Fetch recruiter names from the Candidates module by searching candidate names
-async function fetchCandidateRecruiters(accessToken: string, candidateNames: string[]): Promise<Map<string, string>> {
+// Fetch ALL candidates with their recruiter from the Candidates module (paginated bulk fetch)
+async function fetchAllCandidateRecruiters(accessToken: string): Promise<Map<string, string>> {
   const recruiterMap = new Map<string, string>();
-  if (candidateNames.length === 0) return recruiterMap;
-
-  // Batch into chunks of 10 to avoid rate limits (search is heavier than direct lookup)
-  const chunkSize = 10;
-  for (let i = 0; i < candidateNames.length; i += chunkSize) {
-    const chunk = candidateNames.slice(i, i + chunkSize);
-    const results = await Promise.allSettled(
-      chunk.map(async (fullName) => {
-        // Search Candidates module by Full_Name
-        const searchUrl = `https://recruit.zoho.com/recruit/v2/Candidates/search?criteria=(Full_Name:equals:${encodeURIComponent(fullName)})&fields=Full_Name,Recruiter`;
-        const response = await fetch(searchUrl, {
-          headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
-        });
-        if (!response.ok) return { name: fullName, recruiter: 'Unassigned' };
-        const data = await response.json();
-        const candidate = data.data?.[0];
-        if (!candidate?.Recruiter) return { name: fullName, recruiter: 'Unassigned' };
+  let page = 1;
+  let hasMore = true;
+  while (hasMore) {
+    const url = `https://recruit.zoho.com/recruit/v2/Candidates?fields=Full_Name,Recruiter&page=${page}&per_page=200`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) { if (response.status === 204) break; break; }
+    const data = await response.json();
+    if (data.data) {
+      for (const candidate of data.data) {
+        const fullName = candidate.Full_Name;
+        if (!fullName) continue;
         const rec = candidate.Recruiter;
+        if (!rec) continue;
         const recruiterName = typeof rec === 'string' ? rec : rec?.name || zohoStr(rec, 'Unassigned');
-        return { name: fullName, recruiter: recruiterName };
-      })
-    );
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        recruiterMap.set(result.value.name, result.value.recruiter);
+        if (recruiterName && recruiterName !== 'Unassigned') {
+          recruiterMap.set(fullName, recruiterName);
+        }
       }
     }
+    hasMore = data.info?.more_records ?? false;
+    page++;
+    if (page > 25) break; // Safety cap: 5000 candidates max
   }
   return recruiterMap;
 }
@@ -273,9 +270,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { from, to } = req.query as { from?: string; to?: string };
     const accessToken = await getZohoAccessToken();
-    const [applications, jobInfoMap] = await Promise.all([
+    const [applications, jobInfoMap, candidateRecruiterMap] = await Promise.all([
       fetchApplications(accessToken, from, to),
       fetchJobInfoMap(accessToken),
+      fetchAllCandidateRecruiters(accessToken),
     ]);
     const now = new Date();
 
@@ -394,7 +392,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }> = {};
 
     applications.forEach((app) => {
-      const recruiter = getRecruiter(app);
+      // Use the actual recruiter from Candidates module, fall back to Ops person
+      const fullName = app.Full_Name || '';
+      const recruiter = candidateRecruiterMap.get(fullName) || getRecruiter(app);
       if (!recruiterStats[recruiter]) {
         recruiterStats[recruiter] = { totalCandidates: 0, reachedSubmission: 0, reachedInterview: 0, reachedOffer: 0, hires: 0, rejected: 0, active: 0 };
       }
@@ -528,13 +528,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return label !== null;
     });
 
-    // Fetch recruiter names from Candidates module by candidate name
-    const candidateNames = interviewApps
-      .map((app) => app.Full_Name || '')
-      .filter((name) => name.length > 0);
-
-    const candidateRecruiterMap = await fetchCandidateRecruiters(accessToken, [...new Set(candidateNames)]);
-
+    // Use the bulk candidateRecruiterMap fetched at startup (shared with scorecard)
     const interviewPipeline = interviewApps
       .map((app) => {
         const fullName = app.Full_Name || 'Unknown';
