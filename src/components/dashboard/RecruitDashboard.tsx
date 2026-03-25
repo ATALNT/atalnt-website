@@ -69,6 +69,9 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
   const [openJobsExpanded, setOpenJobsExpanded] = useState(true);
   const [interviewExpanded, setInterviewExpanded] = useState(true);
+  const [recruiterReportExpanded, setRecruiterReportExpanded] = useState(true);
+  const [expandedRecruiters, setExpandedRecruiters] = useState<Set<string>>(new Set());
+  const [recruiterReportSort, setRecruiterReportSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalCandidates', dir: 'desc' });
 
   const jobsQuery = useQuery({
     queryKey: ['recruit', 'jobs'],
@@ -117,6 +120,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const interviewPipeline = appsData?.interviewPipeline || [];
   const interviewStageCounts = appsData?.interviewStageCounts || [];
   const openJobsReport = appsData?.openJobsReport || [];
+  const recruiterDetailReport = appsData?.recruiterDetailReport || [];
 
   return (
     <div className="space-y-6">
@@ -579,6 +583,172 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
         </CardContent>
       </Card>
 
+      {/* ============================================ */}
+      {/* CONSOLIDATED RECRUITER REPORT                */}
+      {/* Expandable per-recruiter candidate details   */}
+      {/* ============================================ */}
+      <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent" />
+        <CardHeader className="pb-2 cursor-pointer select-none" onClick={() => setRecruiterReportExpanded((v) => !v)}>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+              {recruiterReportExpanded ? <ChevronUp className="h-3.5 w-3.5 text-emerald-400/60" /> : <ChevronDown className="h-3.5 w-3.5 text-emerald-400/60" />}
+              <UserCheck className="h-3.5 w-3.5 text-emerald-400/60" />
+              Consolidated Recruiter Report
+            </CardTitle>
+            <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs">
+              {recruiterDetailReport.length} Recruiters
+            </Badge>
+          </div>
+        </CardHeader>
+        {recruiterReportExpanded && <CardContent>
+          {recruiterDetailReport.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/[0.04] hover:bg-transparent">
+                    {[
+                      { key: 'recruiterName', label: 'Recruiter', align: '' },
+                      { key: 'totalCandidates', label: 'Total', align: 'text-right' },
+                      { key: 'submittedToClient', label: 'Submitted', align: 'text-right' },
+                      { key: 'interviews', label: 'Interviews', align: 'text-right' },
+                      { key: 'offers', label: 'Offers', align: 'text-right' },
+                      { key: 'hires', label: 'Hires', align: 'text-right' },
+                      { key: 'activePipeline', label: 'Active', align: 'text-right' },
+                      { key: 'submitToInterviewRate', label: 'Sub→Int %', align: 'text-right' },
+                      { key: 'interviewToHireRate', label: 'Int→Hire %', align: 'text-right' },
+                    ].map((col) => (
+                      <TableHead
+                        key={col.key}
+                        className={`text-white/25 text-[10px] uppercase tracking-widest cursor-pointer hover:text-white/50 select-none transition-colors ${col.align}`}
+                        onClick={() => setRecruiterReportSort((prev) => ({
+                          key: col.key,
+                          dir: prev.key === col.key && prev.dir === 'asc' ? 'desc' : 'asc',
+                        }))}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {recruiterReportSort.key === col.key ? (
+                            recruiterReportSort.dir === 'asc' ? <ArrowUp className="h-3 w-3 text-emerald-400" /> : <ArrowDown className="h-3 w-3 text-emerald-400" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-30" />
+                          )}
+                        </span>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...recruiterDetailReport].sort((a: any, b: any) => {
+                    const k = recruiterReportSort.key;
+                    const dir = recruiterReportSort.dir === 'asc' ? 1 : -1;
+                    if (k === 'recruiterName') return String(a[k] || '').localeCompare(String(b[k] || '')) * dir;
+                    return ((a[k] || 0) - (b[k] || 0)) * dir;
+                  }).map((r: any, i: number) => {
+                    const isExpanded = expandedRecruiters.has(r.recruiterName);
+                    return (
+                      <>
+                        <TableRow
+                          key={`rec-${i}`}
+                          className="border-white/[0.03] hover:bg-white/[0.02] cursor-pointer"
+                          onClick={() => setExpandedRecruiters((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(r.recruiterName)) next.delete(r.recruiterName);
+                            else next.add(r.recruiterName);
+                            return next;
+                          })}
+                        >
+                          <TableCell className="font-medium text-white/80">
+                            <span className="inline-flex items-center gap-1.5">
+                              {isExpanded ? <ChevronUp className="h-3 w-3 text-emerald-400/60" /> : <ChevronDown className="h-3 w-3 text-white/30" />}
+                              {r.recruiterName}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right text-white/50">{r.totalCandidates}</TableCell>
+                          <TableCell className="text-right text-[#D4A853] font-semibold">{r.submittedToClient}</TableCell>
+                          <TableCell className="text-right text-purple-400">{r.interviews}</TableCell>
+                          <TableCell className="text-right">
+                            {r.offers > 0 ? <span className="text-amber-400 font-semibold">{r.offers}</span> : <span className="text-white/20">0</span>}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {r.hires > 0 ? (
+                              <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{r.hires}</Badge>
+                            ) : <span className="text-white/20">0</span>}
+                          </TableCell>
+                          <TableCell className="text-right text-white/40">{r.activePipeline}</TableCell>
+                          <TableCell className="text-right"><RateCell value={r.submitToInterviewRate} /></TableCell>
+                          <TableCell className="text-right"><RateCell value={r.interviewToHireRate} /></TableCell>
+                        </TableRow>
+                        {isExpanded && r.candidates.length > 0 && (
+                          <TableRow key={`rec-${i}-expanded`} className="border-white/[0.03] bg-white/[0.01]">
+                            <TableCell colSpan={9} className="p-0">
+                              <div className="border-l-2 border-emerald-500/20 ml-4 pl-4 py-2">
+                                <p className="text-[10px] text-white/30 uppercase tracking-widest mb-2">
+                                  All Candidates ({r.candidates.length})
+                                </p>
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow className="border-white/[0.04] hover:bg-transparent">
+                                      <TableHead className="text-white/20 text-[9px] uppercase tracking-widest">Candidate</TableHead>
+                                      <TableHead className="text-white/20 text-[9px] uppercase tracking-widest">Job Opening</TableHead>
+                                      <TableHead className="text-white/20 text-[9px] uppercase tracking-widest">Client</TableHead>
+                                      <TableHead className="text-white/20 text-[9px] uppercase tracking-widest">Status</TableHead>
+                                      <TableHead className="text-white/20 text-right text-[9px] uppercase tracking-widest">Days in Stage</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {r.candidates.map((c: any, ci: number) => (
+                                      <TableRow key={ci} className="border-white/[0.02] hover:bg-white/[0.01]">
+                                        <TableCell className="text-white/70 text-sm">{c.candidateName}</TableCell>
+                                        <TableCell className="text-white/50 text-sm max-w-[200px] truncate">{c.jobTitle}</TableCell>
+                                        <TableCell className="text-white/50 text-sm">{c.clientName}</TableCell>
+                                        <TableCell>
+                                          <Badge variant="secondary" className="text-[9px]" style={{
+                                            backgroundColor: `${STATUS_COLORS[c.currentStatus] || '#D4A853'}15`,
+                                            color: STATUS_COLORS[c.currentStatus] || '#D4A853',
+                                            borderColor: `${STATUS_COLORS[c.currentStatus] || '#D4A853'}30`,
+                                            borderWidth: 1,
+                                          }}>
+                                            {c.currentStatus}
+                                          </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                          <Badge variant="secondary" className={
+                                            c.daysInStage > 7 ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                                            : c.daysInStage > 3 ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                            : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                          }>
+                                            {c.daysInStage}d
+                                          </Badge>
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                        {isExpanded && r.candidates.length === 0 && (
+                          <TableRow key={`rec-${i}-empty`} className="border-white/[0.03] bg-white/[0.01]">
+                            <TableCell colSpan={9}>
+                              <div className="border-l-2 border-emerald-500/20 ml-4 pl-4 py-3">
+                                <p className="text-white/30 text-sm">No candidates assigned</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="text-center text-white/30 py-8">No recruiter data available</p>
+          )}
+        </CardContent>}
+      </Card>
 
     </div>
   );

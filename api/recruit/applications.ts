@@ -428,6 +428,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .sort((a, b) => b.totalCandidates - a.totalCandidates);
 
     // =============================================
+    // 6b. CONSOLIDATED RECRUITER DETAIL REPORT
+    // =============================================
+    // Group all applications by actual recruiter with full candidate details
+    const recruiterCandidatesMap: Record<string, Array<{
+      candidateName: string; jobTitle: string; clientName: string;
+      currentStatus: string; funnelStage: number; daysInStage: number; createdDate: string;
+    }>> = {};
+
+    applications.forEach((app) => {
+      const fullName = app.Full_Name || '';
+      const recruiter = candidateRecruiterMap.get(fullName) || getRecruiter(app);
+      if (!recruiterCandidatesMap[recruiter]) recruiterCandidatesMap[recruiter] = [];
+      const jobTitle = app.Job_Opening_Name || 'Unknown';
+      const clientName = (jobTitle && jobInfoMap.get(jobTitle)?.clientName) || zohoStr(app.Client_Name);
+      recruiterCandidatesMap[recruiter].push({
+        candidateName: fullName || 'Unknown',
+        jobTitle,
+        clientName,
+        currentStatus: app.Application_Status || 'Unknown',
+        funnelStage: getMaxFunnelStage(app.Application_Status || ''),
+        daysInStage: daysBetween(new Date(app.Updated_On), now),
+        createdDate: app.Created_Time?.split('T')[0] || '',
+      });
+    });
+
+    // Merge KPIs from recruiterPerformance with candidate lists
+    const recruiterDetailReport = recruiterPerformance.map((perf) => ({
+      ...perf,
+      candidates: (recruiterCandidatesMap[perf.recruiterName] || [])
+        .sort((a, b) => b.funnelStage - a.funnelStage || b.daysInStage - a.daysInStage),
+    }));
+
+    // =============================================
     // 7. CLIENT HEALTH (using flexible matching)
     // =============================================
     const clientStats: Record<string, {
@@ -648,6 +681,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .map(([status, count]) => ({ status, count }))
           .sort((a, b) => b.count - a.count),
         recruiterPerformance,
+        recruiterDetailReport,
         clientHealth: clientHealth.slice(0, 15),
         submissionsByRecruiter: Object.entries(submissionsByRecruiter)
           .map(([recruiterName, data]) => ({ recruiterName, ...data }))
