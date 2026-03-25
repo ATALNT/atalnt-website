@@ -67,6 +67,8 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const [interviewSort, setInterviewSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'stageOrder', dir: 'desc' });
   const [openJobsSort, setOpenJobsSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'priorityTier', dir: 'asc' });
   const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
+  const [openJobsExpanded, setOpenJobsExpanded] = useState(true);
+  const [interviewExpanded, setInterviewExpanded] = useState(true);
 
   const jobsQuery = useQuery({
     queryKey: ['recruit', 'jobs'],
@@ -213,9 +215,10 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
       {/* ============================================ */}
       <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
         <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D4A853]/30 to-transparent" />
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 cursor-pointer select-none" onClick={() => setOpenJobsExpanded((v) => !v)}>
           <div className="flex items-center justify-between">
             <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+              {openJobsExpanded ? <ChevronUp className="h-3.5 w-3.5 text-[#D4A853]/60" /> : <ChevronDown className="h-3.5 w-3.5 text-[#D4A853]/60" />}
               <Briefcase className="h-3.5 w-3.5 text-[#D4A853]/60" />
               Open Jobs
             </CardTitle>
@@ -234,7 +237,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        {openJobsExpanded && <CardContent>
           {openJobsReport.length > 0 ? (
             <div className="overflow-x-auto">
               <Table>
@@ -390,7 +393,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
           ) : (
             <p className="text-center text-white/30 py-8">No open jobs found</p>
           )}
-        </CardContent>
+        </CardContent>}
       </Card>
 
       {/* ============================================ */}
@@ -399,9 +402,10 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
       {/* ============================================ */}
       <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
         <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-purple-500/30 to-transparent" />
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 cursor-pointer select-none" onClick={() => setInterviewExpanded((v) => !v)}>
           <div className="flex items-center justify-between">
             <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+              {interviewExpanded ? <ChevronUp className="h-3.5 w-3.5 text-purple-400/60" /> : <ChevronDown className="h-3.5 w-3.5 text-purple-400/60" />}
               <Users className="h-3.5 w-3.5 text-purple-400/60" />
               Interview Pipeline
             </CardTitle>
@@ -417,7 +421,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
             </div>
           </div>
         </CardHeader>
-        <CardContent>
+        {interviewExpanded && <CardContent>
           {interviewPipeline.length > 0 ? (
             <div className="overflow-x-auto">
               <Table>
@@ -502,7 +506,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
           ) : (
             <p className="text-center text-white/30 py-8">No candidates currently in interview stages</p>
           )}
-        </CardContent>
+        </CardContent>}
       </Card>
 
       {/* ============================================ */}
