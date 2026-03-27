@@ -4,7 +4,7 @@
 // ============================================
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { detectServicesFromText, extractSalesProfile } from '../lib/freight-signals';
+import { detectServicesFromText, extractSalesProfile } from '../lib/freight-signals.js';
 
 // --- Zoho OAuth (inlined for serverless, same pattern as candidates.ts) ---
 
@@ -118,7 +118,8 @@ async function fetchResumeText(candidateId: string, accessToken: string): Promis
     // Extract text based on file type
     if (fileName.endsWith('.pdf')) {
       try {
-        const pdfParse = (await import('pdf-parse')).default;
+        const pdfModule = await import('pdf-parse');
+        const pdfParse = (pdfModule as any).default || pdfModule;
         const result = await pdfParse(buffer);
         return result.text || '';
       } catch {

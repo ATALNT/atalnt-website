@@ -138,7 +138,19 @@
       "Bash(curl -s -X POST \"https://accounts.zoho.com/oauth/v2/token\" -d \"grant_type=authorization_code\" -d \"client_id=1000.CYIMJDVZ1RHASOVVM5X5SKZ13CUNCC\" -d \"client_secret=f2e1e8de535674b6f0a0731f08d0c915a2432902a6\" -d \"code=1000.010f9a1c1a0698090ecd4a84d1ba6d9f.e303177c76b0f98e8ed2d26959909183\")",
       "Bash(curl -s \"https://www.atalnt.com/api/voice/calls?preset=this_week\" -H \"Authorization: Bearer c915d9949ff74de70ebb7cec0774ec02e994181279715ea2fa356705cf072daa\")",
       "WebFetch(domain:help.zoho.com)",
-      "Bash(curl -s \"https://www.atalnt.com/api/voice/calls?preset=last_30_days\" -H \"Authorization: Bearer c915d9949ff74de70ebb7cec0774ec02e994181279715ea2fa356705cf072daa\")"
+      "Bash(curl -s \"https://www.atalnt.com/api/voice/calls?preset=last_30_days\" -H \"Authorization: Bearer c915d9949ff74de70ebb7cec0774ec02e994181279715ea2fa356705cf072daa\")",
+      "WebFetch(domain:muxlet.com)",
+      "WebFetch(domain:www.motviz.com)",
+      "Bash(curl -s \"https://www.atalnt.com/api/voice/calls?preset=last_7_days\" -H \"Authorization: Bearer c915d9949ff74de70ebb7cec0774ec02e994181279715ea2fa356705cf072daa\")",
+      "Bash(curl -s \"https://www.atalnt.com/api/recruit/applications?from=2025-01-01T00:00:00.000Z&to=2026-12-31T23:59:59.000Z\" -H \"Authorization: Bearer c915d9949ff74de70ebb7cec0774ec02e994181279715ea2fa356705cf072daa\")",
+      "Bash(curl -s \"https://www.atalnt.com/api/recruit/applications?from=2024-01-01T00:00:00.000Z&to=2026-12-31T23:59:59.000Z\" -H \"Authorization: Bearer c915d9949ff74de70ebb7cec0774ec02e994181279715ea2fa356705cf072daa\")",
+      "Bash(curl -s -H \"Authorization: Bearer c915d9949ff74de70ebb7cec0774ec02e994181279715ea2fa356705cf072daa\" \"https://www.atalnt.com/api/recruit/applications?from=2025-01-01&to=2026-03-16\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://www.atalnt.com/db\")",
+      "Bash(curl -v -X POST \"https://www.atalnt.com/api/auth/login\" -H \"Content-Type: application/json\" -d '{\"\"\"\"password\"\"\"\":\"\"\"\"Teamof3!!!\"\"\"\"}')",
+      "Bash(curl -s -X POST \"https://www.atalnt.com/api/auth/login\" -H \"Content-Type: application/json\" -d '{\"\"\"\"password\"\"\"\":\"\"\"\"Teamof3!!!\"\"\"\"}')",
+      "Bash(printf '{\"\"\"\"password\"\"\"\":\"\"\"\"Teamof3!!!\"\"\"\"}')",
+      "Bash(curl -s -X POST \"https://www.atalnt.com/api/auth/login\" -H \"Content-Type: application/json\" -d @-)",
+      "Bash(chmod +x \"/Users/nikjain55/Desktop/Claude Code/ROI Calculator/scripts/setup-instantly-webhook.sh\")"
     ]
   }
 }
