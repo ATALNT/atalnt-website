@@ -164,8 +164,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const accessToken = await getZohoAccessToken();
 
     // Fetch candidates where Post_to_MPC = true
-    // First, try fetching all fields (Zoho returns all when fields param is omitted)
-    const url = `https://recruit.zoho.com/recruit/v2/Candidates?criteria=(Post_to_MPC:equals:true)&per_page=20`;
+    // Zoho Recruit v2 uses "criteria" with URL encoding; pagination uses "count" not "per_page"
+    const criteria = encodeURIComponent('(Post_to_MPC:equals:true)');
+    const url = `https://recruit.zoho.com/recruit/v2/Candidates?criteria=${criteria}&count=20`;
     const resp = await fetch(url, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
     });
