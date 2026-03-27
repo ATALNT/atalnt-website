@@ -164,14 +164,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const accessToken = await getZohoAccessToken();
 
     // Fetch candidates where Post_to_MPC = true
-    const fields = [
-      'Full_Name', 'First_Name', 'Last_Name', 'Current_Job_Title',
-      'City', 'State', 'Current_Salary', 'Expected_Salary',
-      'Skill_Set', 'Notes_from_recruiter', 'Experience_in_Years',
-      'Is_Attachment_Present', 'Post_to_MPC',
-    ].join(',');
-
-    const url = `https://recruit.zoho.com/recruit/v2/Candidates?criteria=(Post_to_MPC:equals:true)&fields=${fields}&per_page=20`;
+    // First, try fetching all fields (Zoho returns all when fields param is omitted)
+    const url = `https://recruit.zoho.com/recruit/v2/Candidates?criteria=(Post_to_MPC:equals:true)&per_page=20`;
     const resp = await fetch(url, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
     });
@@ -207,7 +201,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
 
           // Combine recruiter notes + resume + skills for analysis
-          const recruiterNotes = record.Notes_from_recruiter || '';
+          const recruiterNotes = record.Notes_from_recruiter || record.Notes_from_Recruiter || record.Recruiter_Notes || '';
           const skillSet = record.Skill_Set || '';
           const combinedText = [recruiterNotes, resumeText, skillSet].join('\n');
 
