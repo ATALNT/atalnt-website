@@ -457,7 +457,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // =============================================
     const submissionsByRecruiter: Record<string, { submitted: number; newInPeriod: number; candidates: { name: string; status: string; client: string; job: string; recruiter: string }[] }> = {};
     applications.forEach((app) => {
-      const recruiter = getRecruiter(app);
+      const fullName = app.Full_Name || '';
+      const recruiter = candidateRecruiterMap[fullName] || getRecruiter(app);
       const status = app.Application_Status || '';
       const maxStage = getMaxFunnelStage(status);
       if (!submissionsByRecruiter[recruiter]) {
