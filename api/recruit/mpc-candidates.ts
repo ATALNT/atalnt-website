@@ -164,12 +164,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const accessToken = await getZohoAccessToken();
 
     // Fetch candidates where Post_to_MPC = true
-    // Zoho Recruit v2 uses "criteria" with URL encoding; pagination uses "count" not "per_page"
-    const criteria = encodeURIComponent('(Post_to_MPC:equals:true)');
-    const url = `https://recruit.zoho.com/recruit/v2/Candidates?criteria=${criteria}&count=20`;
-    const resp = await fetch(url, {
+    // Use Zoho Recruit v2 search endpoint with criteria
+    const criteria = '(Post_to_MPC:equals:true)';
+    const searchUrl = `https://recruit.zoho.com/recruit/v2/Candidates/search?criteria=${encodeURIComponent(criteria)}&per_page=20`;
+    let resp = await fetch(searchUrl, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
     });
+
+    // Fallback: if search fails, fetch all candidates and filter client-side
+    if (!resp.ok && resp.status !== 204) {
+      const fallbackUrl = `https://recruit.zoho.com/recruit/v2/Candidates?per_page=200`;
+      resp = await fetch(fallbackUrl, {
+        headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+      });
+    }
 
     if (!resp.ok && resp.status !== 204) {
       const errText = await resp.text();
@@ -181,7 +189,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const data = await resp.json();
-    const records = data.data || [];
+    // Filter for Post_to_MPC in case we used the fallback (non-search) endpoint
+    const allRecords = data.data || [];
+    const records = allRecords.filter((r: any) => r.Post_to_MPC === true || r.Post_to_MPC === 'true');
 
     // Process each candidate
     const candidates: MPCCandidate[] = [];
