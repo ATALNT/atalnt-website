@@ -21,25 +21,18 @@ interface InstantlyListResponse {
   next_starting_after?: string;
 }
 
-async function fetchAllAccounts(apiKey: string): Promise<InstantlyAccount[]> {
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
-  };
-  const baseUrl = 'https://api.instantly.ai/api/v2/accounts?limit=100';
-  const allAccounts: InstantlyAccount[] = [];
-  const seen = new Set<string>();
+async function fetchWithSearch(search: string, headers: Record<string, string>, seen: Set<string>, allAccounts: InstantlyAccount[]): Promise<void> {
   let startAfter: string | undefined;
-
   while (true) {
     const url = startAfter
-      ? `${baseUrl}&starting_after=${encodeURIComponent(startAfter)}`
-      : baseUrl;
+      ? `https://api.instantly.ai/api/v2/accounts?limit=100&search=${encodeURIComponent(search)}&starting_after=${encodeURIComponent(startAfter)}`
+      : `https://api.instantly.ai/api/v2/accounts?limit=100&search=${encodeURIComponent(search)}`;
 
     const resp = await fetch(url, { method: 'GET', headers });
     if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`Instantly API error ${resp.status}: ${errText}`);
+      // Skip on rate limit or transient errors for individual searches
+      console.warn(`Search '${search}' failed: ${resp.status}`);
+      break;
     }
 
     const data: InstantlyListResponse = await resp.json();
@@ -56,6 +49,26 @@ async function fetchAllAccounts(apiKey: string): Promise<InstantlyAccount[]> {
     } else {
       break;
     }
+  }
+}
+
+async function fetchAllAccounts(apiKey: string): Promise<InstantlyAccount[]> {
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  };
+  const allAccounts: InstantlyAccount[] = [];
+  const seen = new Set<string>();
+
+  // Instantly API v2 pagination is broken — it skips accounts.
+  // Workaround: search by each letter a-z to get all accounts.
+  const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  for (const letter of letters) {
+    await fetchWithSearch(letter, headers, seen, allAccounts);
+  }
+  // Also search digits for any numeric-prefixed emails
+  for (let i = 0; i <= 9; i++) {
+    await fetchWithSearch(String(i), headers, seen, allAccounts);
   }
 
   return allAccounts;

@@ -18,6 +18,33 @@ interface InstantlyListResponse {
   next_starting_after?: string;
 }
 
+async function fetchWithSearch(search: string, headers: Record<string, string>, seen: Set<string>, allAccounts: InstantlyAccount[]): Promise<void> {
+  let startAfter: string | undefined;
+  while (true) {
+    const url = startAfter
+      ? `https://api.instantly.ai/api/v2/accounts?limit=100&search=${encodeURIComponent(search)}&starting_after=${encodeURIComponent(startAfter)}`
+      : `https://api.instantly.ai/api/v2/accounts?limit=100&search=${encodeURIComponent(search)}`;
+
+    const resp = await fetch(url, { method: 'GET', headers });
+    if (!resp.ok) break;
+
+    const data: InstantlyListResponse = await resp.json();
+    const items = data.items || [];
+    for (const item of items) {
+      if (!seen.has(item.email)) {
+        seen.add(item.email);
+        allAccounts.push(item);
+      }
+    }
+
+    if (data.next_starting_after) {
+      startAfter = data.next_starting_after;
+    } else {
+      break;
+    }
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const headers = corsHeaders();
   Object.entries(headers).forEach(([k, v]) => res.setHeader(k, v));
@@ -39,36 +66,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
 
   try {
-    const baseUrl = 'https://api.instantly.ai/api/v2/accounts?limit=100';
     const allAccounts: InstantlyAccount[] = [];
     const seen = new Set<string>();
-    let startAfter: string | undefined;
 
-    while (true) {
-      const url = startAfter
-        ? `${baseUrl}&starting_after=${encodeURIComponent(startAfter)}`
-        : baseUrl;
-
-      const resp = await fetch(url, { method: 'GET', headers: apiHeaders });
-      if (!resp.ok) {
-        const errText = await resp.text();
-        throw new Error(`Instantly API error ${resp.status}: ${errText}`);
-      }
-
-      const data: InstantlyListResponse = await resp.json();
-      const items = data.items || [];
-      for (const item of items) {
-        if (!seen.has(item.email)) {
-          seen.add(item.email);
-          allAccounts.push(item);
-        }
-      }
-
-      if (data.next_starting_after) {
-        startAfter = data.next_starting_after;
-      } else {
-        break;
-      }
+    // Instantly API v2 pagination is broken — search by letter to get all accounts
+    const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
+    for (const letter of letters) {
+      await fetchWithSearch(letter, apiHeaders, seen, allAccounts);
+    }
+    for (let i = 0; i <= 9; i++) {
+      await fetchWithSearch(String(i), apiHeaders, seen, allAccounts);
     }
 
     const minScore = 97;
