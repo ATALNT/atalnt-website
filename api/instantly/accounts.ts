@@ -78,6 +78,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await fetchWithSearch(String(i), apiHeaders, seen, allAccounts);
     }
 
+    // Also fetch by status to catch disconnected/error accounts missed by search
+    for (const status of [1, 2, 3, -1, -2, -3]) {
+      let startAfter: string | undefined;
+      while (true) {
+        const url = startAfter
+          ? `https://api.instantly.ai/api/v2/accounts?limit=100&status=${status}&starting_after=${encodeURIComponent(startAfter)}`
+          : `https://api.instantly.ai/api/v2/accounts?limit=100&status=${status}`;
+        const resp = await fetch(url, { method: 'GET', headers: apiHeaders });
+        if (!resp.ok) break;
+        const data: InstantlyListResponse = await resp.json();
+        for (const item of data.items || []) {
+          if (!seen.has(item.email)) {
+            seen.add(item.email);
+            allAccounts.push(item);
+          }
+        }
+        if (data.next_starting_after) {
+          startAfter = data.next_starting_after;
+        } else {
+          break;
+        }
+      }
+    }
+
     const minScore = 97;
     const summary = {
       total: allAccounts.length,
