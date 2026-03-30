@@ -69,61 +69,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const allAccounts: InstantlyAccount[] = [];
     const seen = new Set<string>();
 
-    // Instantly API v2 pagination is broken — search by letter to get all accounts
-    const letters = 'abcdefghijklmnopqrstuvwxyz'.split('');
-    for (const letter of letters) {
-      await fetchWithSearch(letter, apiHeaders, seen, allAccounts);
+    // Instantly API v2 pagination is broken — search by two-letter combos to get all accounts
+    const letters = 'abcdefghijklmnopqrstuvwxyz';
+    for (const a of letters) {
+      for (const b of letters) {
+        await fetchWithSearch(a + b, apiHeaders, seen, allAccounts);
+      }
     }
     for (let i = 0; i <= 9; i++) {
       await fetchWithSearch(String(i), apiHeaders, seen, allAccounts);
-    }
-
-    // Also fetch by provider_code to catch accounts missed by letter search
-    for (const provider of [1, 2, 3, 4, 8]) {
-      let startAfter: string | undefined;
-      while (true) {
-        const url = startAfter
-          ? `https://api.instantly.ai/api/v2/accounts?limit=100&provider_code=${provider}&starting_after=${encodeURIComponent(startAfter)}`
-          : `https://api.instantly.ai/api/v2/accounts?limit=100&provider_code=${provider}`;
-        const resp = await fetch(url, { method: 'GET', headers: apiHeaders });
-        if (!resp.ok) break;
-        const data: InstantlyListResponse = await resp.json();
-        for (const item of data.items || []) {
-          if (!seen.has(item.email)) {
-            seen.add(item.email);
-            allAccounts.push(item);
-          }
-        }
-        if (data.next_starting_after) {
-          startAfter = data.next_starting_after;
-        } else {
-          break;
-        }
-      }
-    }
-
-    // Also fetch by status to catch disconnected/error accounts missed by search
-    for (const status of [1, 2, 3, -1, -2, -3]) {
-      let startAfter: string | undefined;
-      while (true) {
-        const url = startAfter
-          ? `https://api.instantly.ai/api/v2/accounts?limit=100&status=${status}&starting_after=${encodeURIComponent(startAfter)}`
-          : `https://api.instantly.ai/api/v2/accounts?limit=100&status=${status}`;
-        const resp = await fetch(url, { method: 'GET', headers: apiHeaders });
-        if (!resp.ok) break;
-        const data: InstantlyListResponse = await resp.json();
-        for (const item of data.items || []) {
-          if (!seen.has(item.email)) {
-            seen.add(item.email);
-            allAccounts.push(item);
-          }
-        }
-        if (data.next_starting_after) {
-          startAfter = data.next_starting_after;
-        } else {
-          break;
-        }
-      }
     }
 
     const minScore = 97;
