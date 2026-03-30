@@ -45,6 +45,8 @@ async function fetchWithSearch(search: string, headers: Record<string, string>, 
   }
 }
 
+export const maxDuration = 60;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const headers = corsHeaders();
   Object.entries(headers).forEach(([k, v]) => res.setHeader(k, v));
@@ -70,14 +72,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const seen = new Set<string>();
 
     // Instantly API v2 pagination is broken — search by two-letter combos to get all accounts
+    // Run in parallel batches to stay within Vercel's 60s timeout.
     const letters = 'abcdefghijklmnopqrstuvwxyz';
+    const searches: string[] = [];
     for (const a of letters) {
       for (const b of letters) {
-        await fetchWithSearch(a + b, apiHeaders, seen, allAccounts);
+        searches.push(a + b);
       }
     }
     for (let i = 0; i <= 9; i++) {
-      await fetchWithSearch(String(i), apiHeaders, seen, allAccounts);
+      searches.push(String(i));
+    }
+
+    const BATCH_SIZE = 20;
+    for (let i = 0; i < searches.length; i += BATCH_SIZE) {
+      const batch = searches.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(s => fetchWithSearch(s, apiHeaders, seen, allAccounts)));
     }
 
     const minScore = 97;

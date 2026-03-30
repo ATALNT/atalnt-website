@@ -62,16 +62,22 @@ async function fetchAllAccounts(apiKey: string): Promise<InstantlyAccount[]> {
 
   // Instantly API v2 pagination is broken — it skips accounts.
   // Workaround: search by two-letter combos (aa-zz) to get all accounts.
-  // Single letters miss some due to per-query pagination limits.
+  // Run in parallel batches to stay within Vercel's 60s timeout.
   const letters = 'abcdefghijklmnopqrstuvwxyz';
+  const searches: string[] = [];
   for (const a of letters) {
     for (const b of letters) {
-      await fetchWithSearch(a + b, headers, seen, allAccounts);
+      searches.push(a + b);
     }
   }
-  // Also search digits
   for (let i = 0; i <= 9; i++) {
-    await fetchWithSearch(String(i), headers, seen, allAccounts);
+    searches.push(String(i));
+  }
+
+  const BATCH_SIZE = 20;
+  for (let i = 0; i < searches.length; i += BATCH_SIZE) {
+    const batch = searches.slice(i, i + BATCH_SIZE);
+    await Promise.all(batch.map(s => fetchWithSearch(s, headers, seen, allAccounts)));
   }
 
   return allAccounts;
@@ -88,6 +94,8 @@ async function setDailyLimit(email: string, limit: number, headers: Record<strin
     console.error(`Failed to update ${email}: ${resp.status} ${errText}`);
   }
 }
+
+export const maxDuration = 60;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authHeader = req.headers.authorization;
