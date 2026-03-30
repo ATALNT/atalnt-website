@@ -45,7 +45,7 @@ async function fetchWithSearch(search: string, headers: Record<string, string>, 
   }
 }
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const headers = corsHeaders();
