@@ -28,6 +28,7 @@ async function fetchAllAccounts(apiKey: string): Promise<InstantlyAccount[]> {
   };
   const baseUrl = 'https://api.instantly.ai/api/v2/accounts?limit=100';
   const allAccounts: InstantlyAccount[] = [];
+  const seen = new Set<string>();
   let startAfter: string | undefined;
 
   while (true) {
@@ -43,7 +44,12 @@ async function fetchAllAccounts(apiKey: string): Promise<InstantlyAccount[]> {
 
     const data: InstantlyListResponse = await resp.json();
     const items = data.items || [];
-    allAccounts.push(...items);
+    for (const item of items) {
+      if (!seen.has(item.email)) {
+        seen.add(item.email);
+        allAccounts.push(item);
+      }
+    }
 
     if (data.next_starting_after) {
       startAfter = data.next_starting_after;
