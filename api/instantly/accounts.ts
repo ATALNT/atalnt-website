@@ -15,6 +15,7 @@ interface InstantlyAccount {
 
 interface InstantlyListResponse {
   items: InstantlyAccount[];
+  next_starting_after?: string;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -40,10 +41,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const baseUrl = 'https://api.instantly.ai/api/v2/accounts?limit=100';
     const allAccounts: InstantlyAccount[] = [];
-    let startAfter = '';
-    let hasMore = true;
+    let startAfter: string | undefined;
 
-    while (hasMore) {
+    while (true) {
       const url = startAfter
         ? `${baseUrl}&starting_after=${encodeURIComponent(startAfter)}`
         : baseUrl;
@@ -58,10 +58,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const items = data.items || [];
       allAccounts.push(...items);
 
-      if (items.length === 100) {
-        startAfter = items[items.length - 1].email;
+      if (data.next_starting_after) {
+        startAfter = data.next_starting_after;
       } else {
-        hasMore = false;
+        break;
       }
     }
 
