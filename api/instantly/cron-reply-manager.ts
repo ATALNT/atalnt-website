@@ -78,14 +78,13 @@ const POSITIVE_SIGNALS = [
   'pass this along',
   'passing this to',
   'forwarding to',
-  'cc my',
-  "i'll connect you",
+  'cc my colleague',
+  'cc my team',
+  "i'll connect you with",
   'connect you with',
-  'loop in',
-  'looping in',
-  'the right person',
-  'reach out to',
-  'contact my',
+  'loop in my',
+  'looping in my',
+  'the right person to talk to',
 
   // Asking for proposal / pricing
   'send me a proposal',
@@ -168,10 +167,31 @@ const NEGATIVE_SIGNALS = [
   // No longer at company
   'no longer with',
   'no longer at',
-  'left the company',
+  'no longer an employee',
   'no longer employed',
+  'left the company',
+  'last day with',
+  'last day at',
   'moved on from',
   'retired',
+  'for inquiries after',
+  'please direct',
+
+  // Limited availability (OOO variant)
+  'limited access to email',
+  'limited availability',
+  'limited availabiity',
+  'limited email access',
+  'will return on',
+  'i will be out',
+  'i am out',
+  'will be back',
+  'return to the office',
+  'returning on',
+  'back in the office',
+  'out of the country',
+  'out of town',
+  'traveling until',
 
   // Legal / compliance
   'gdpr',
@@ -243,7 +263,13 @@ function classifyReply(email: InstantlyEmail): Classification {
       'automatic reply', 'automated response', 'auto response', 'auto-response',
       'this is an automated', 'do-not-reply', 'do not reply', 'noreply',
       'no-reply', 'mailer-daemon', 'delivery failed', 'undeliverable',
-      'returned mail', 'message not delivered',
+      'returned mail', 'message not delivered', 'limited access to email',
+      'limited availability', 'limited availabiity', 'limited email access',
+      'will return on', 'i will be out', 'i am out', 'will be back',
+      'return to the office', 'returning on', 'back in the office',
+      'out of the country', 'out of town', 'traveling until',
+      'no longer an employee', 'no longer employed', 'no longer with',
+      'no longer at', 'last day with', 'last day at', 'left the company',
     ].some(signal => text.includes(signal));
 
     if (isOOO) return 'ooo';
@@ -294,10 +320,30 @@ async function fetchAllUnreadReplies(apiKey: string): Promise<InstantlyEmail[]> 
 }
 
 async function markThreadRead(threadId: string, headers: Record<string, string>): Promise<boolean> {
+  // Try thread-level mark-as-read first
   const resp = await fetch(
     `https://api.instantly.ai/api/v2/emails/threads/${encodeURIComponent(threadId)}/mark-as-read`,
     { method: 'POST', headers }
   );
+  if (resp.ok) return true;
+
+  // If thread endpoint fails, try PATCH on individual email
+  console.warn(`Thread mark-read failed for ${threadId}: ${resp.status}`);
+  return false;
+}
+
+async function markEmailRead(emailId: string, headers: Record<string, string>): Promise<boolean> {
+  const resp = await fetch(
+    `https://api.instantly.ai/api/v2/emails/${encodeURIComponent(emailId)}`,
+    {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ is_unread: 0 }),
+    }
+  );
+  if (!resp.ok) {
+    console.warn(`Email mark-read failed for ${emailId}: ${resp.status}`);
+  }
   return resp.ok;
 }
 
@@ -382,15 +428,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!ok) results.errors++;
       }
 
-      // Mark thread as read (dedupe by thread_id)
+      // Mark as read — try thread-level first, fall back to email-level
+      let markedRead = false;
       if (!processedThreads.has(email.thread_id)) {
         processedThreads.add(email.thread_id);
-        const ok = await markThreadRead(email.thread_id, headers);
-        if (ok) {
-          results.marked_read++;
-        } else {
-          results.errors++;
-        }
+        markedRead = await markThreadRead(email.thread_id, headers);
+      }
+      if (!markedRead) {
+        markedRead = await markEmailRead(email.id, headers);
+      }
+      if (markedRead) {
+        results.marked_read++;
+      } else {
+        results.errors++;
       }
     }
 
