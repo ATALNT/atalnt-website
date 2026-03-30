@@ -72,6 +72,8 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const [recruiterReportExpanded, setRecruiterReportExpanded] = useState(true);
   const [expandedRecruiters, setExpandedRecruiters] = useState<Set<string>>(new Set());
   const [recruiterReportSort, setRecruiterReportSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalCandidates', dir: 'desc' });
+  const [clientSubmissionExpanded, setClientSubmissionExpanded] = useState(true);
+  const [clientSubmissionSort, setClientSubmissionSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalSubmissions', dir: 'desc' });
 
   const jobsQuery = useQuery({
     queryKey: ['recruit', 'jobs'],
@@ -121,6 +123,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const interviewStageCounts = appsData?.interviewStageCounts || [];
   const openJobsReport = appsData?.openJobsReport || [];
   const recruiterDetailReport = appsData?.recruiterDetailReport || [];
+  const clientSubmissionSummary = appsData?.clientSubmissionSummary || [];
 
   return (
     <div className="space-y-6">
@@ -746,6 +749,111 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
             </div>
           ) : (
             <p className="text-center text-white/30 py-8">No recruiter data available</p>
+          )}
+        </CardContent>}
+      </Card>
+
+      {/* ============================================ */}
+      {/* CLIENT SUBMISSION SUMMARY                    */}
+      {/* Per-client submission metrics and KPIs       */}
+      {/* ============================================ */}
+      <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
+        <CardHeader className="pb-2 cursor-pointer select-none" onClick={() => setClientSubmissionExpanded((v) => !v)}>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+              {clientSubmissionExpanded ? <ChevronUp className="h-3.5 w-3.5 text-blue-400/60" /> : <ChevronDown className="h-3.5 w-3.5 text-blue-400/60" />}
+              <Building2 className="h-3.5 w-3.5 text-blue-400/60" />
+              Client Submission Summary
+            </CardTitle>
+            <div className="flex items-center gap-3">
+              {clientSubmissionSummary.length > 0 && (
+                <>
+                  <span className="text-[10px] text-white/40">
+                    Total: <span className="text-blue-400 font-semibold">{clientSubmissionSummary.reduce((sum: number, c: any) => sum + c.totalSubmissions, 0)}</span>
+                  </span>
+                  <span className="text-[10px] text-white/40">
+                    Hires: <span className="text-emerald-400 font-semibold">{clientSubmissionSummary.reduce((sum: number, c: any) => sum + c.hires, 0)}</span>
+                  </span>
+                </>
+              )}
+              <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs">
+                {clientSubmissionSummary.length} Clients
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+        {clientSubmissionExpanded && <CardContent>
+          {clientSubmissionSummary.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/[0.04] hover:bg-transparent">
+                    {[
+                      { key: 'clientName', label: 'Client', align: '' },
+                      { key: 'totalSubmissions', label: 'Submissions', align: 'text-right' },
+                      { key: 'inInterview', label: 'In Interview', align: 'text-right' },
+                      { key: 'offers', label: 'Offers', align: 'text-right' },
+                      { key: 'hires', label: 'Hires', align: 'text-right' },
+                      { key: 'rejected', label: 'Rejected', align: 'text-right' },
+                      { key: 'active', label: 'Active', align: 'text-right' },
+                      { key: 'acceptanceRate', label: 'Acceptance %', align: 'text-right' },
+                      { key: 'avgDaysInPipeline', label: 'Avg Days', align: 'text-right' },
+                    ].map((col) => (
+                      <TableHead
+                        key={col.key}
+                        className={`text-white/25 text-[10px] uppercase tracking-widest cursor-pointer hover:text-white/50 select-none transition-colors ${col.align}`}
+                        onClick={() => setClientSubmissionSort((prev) => ({
+                          key: col.key,
+                          dir: prev.key === col.key && prev.dir === 'asc' ? 'desc' : 'asc',
+                        }))}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {clientSubmissionSort.key === col.key ? (
+                            clientSubmissionSort.dir === 'asc' ? <ArrowUp className="h-3 w-3 text-blue-400" /> : <ArrowDown className="h-3 w-3 text-blue-400" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-30" />
+                          )}
+                        </span>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...clientSubmissionSummary].sort((a: any, b: any) => {
+                    const k = clientSubmissionSort.key;
+                    const dir = clientSubmissionSort.dir === 'asc' ? 1 : -1;
+                    if (k === 'clientName') return String(a[k] || '').localeCompare(String(b[k] || '')) * dir;
+                    return ((a[k] || 0) - (b[k] || 0)) * dir;
+                  }).map((c: any, i: number) => (
+                    <TableRow key={i} className="border-white/[0.03] hover:bg-white/[0.02]">
+                      <TableCell className="font-medium text-white/80">{c.clientName}</TableCell>
+                      <TableCell className="text-right text-[#D4A853] font-semibold">{c.totalSubmissions}</TableCell>
+                      <TableCell className="text-right">
+                        {c.inInterview > 0 ? <span className="text-purple-400 font-semibold">{c.inInterview}</span> : <span className="text-white/20">0</span>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {c.offers > 0 ? <span className="text-amber-400 font-semibold">{c.offers}</span> : <span className="text-white/20">0</span>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {c.hires > 0 ? (
+                          <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{c.hires}</Badge>
+                        ) : <span className="text-white/20">0</span>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {c.rejected > 0 ? <span className="text-red-400">{c.rejected}</span> : <span className="text-white/20">0</span>}
+                      </TableCell>
+                      <TableCell className="text-right text-white/40">{c.active}</TableCell>
+                      <TableCell className="text-right"><RateCell value={c.acceptanceRate} /></TableCell>
+                      <TableCell className="text-right text-white/50">{c.avgDaysInPipeline > 0 ? `${c.avgDaysInPipeline}d` : '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="text-center text-white/30 py-8">No submission data available</p>
           )}
         </CardContent>}
       </Card>
