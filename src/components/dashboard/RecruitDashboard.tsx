@@ -75,6 +75,8 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const [formSubmissionsExpanded, setFormSubmissionsExpanded] = useState(true);
   const [formSubmissionsSort, setFormSubmissionsSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalFormSubmissions', dir: 'desc' });
   const [expandedFormRecruiters, setExpandedFormRecruiters] = useState<Set<string>>(new Set());
+  const [clientSubmissionExpanded, setClientSubmissionExpanded] = useState(true);
+  const [clientSubmissionSort, setClientSubmissionSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalSubmissions', dir: 'desc' });
 
   const jobsQuery = useQuery({
     queryKey: ['recruit', 'jobs'],
