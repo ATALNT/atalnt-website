@@ -72,8 +72,9 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const [recruiterReportExpanded, setRecruiterReportExpanded] = useState(true);
   const [expandedRecruiters, setExpandedRecruiters] = useState<Set<string>>(new Set());
   const [recruiterReportSort, setRecruiterReportSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalCandidates', dir: 'desc' });
-  const [clientSubmissionExpanded, setClientSubmissionExpanded] = useState(true);
-  const [clientSubmissionSort, setClientSubmissionSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalSubmissions', dir: 'desc' });
+  const [formSubmissionsExpanded, setFormSubmissionsExpanded] = useState(true);
+  const [formSubmissionsSort, setFormSubmissionsSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalFormSubmissions', dir: 'desc' });
+  const [expandedFormRecruiters, setExpandedFormRecruiters] = useState<Set<string>>(new Set());
 
   const jobsQuery = useQuery({
     queryKey: ['recruit', 'jobs'],
@@ -514,76 +515,6 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
             <p className="text-center text-white/30 py-8">No candidates currently in interview stages</p>
           )}
         </CardContent>}
-      </Card>
-
-      {/* ============================================ */}
-      {/* RECRUITER SCORECARD                          */}
-      {/* The most important view for managing your team */}
-      {/* ============================================ */}
-      <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
-        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D4A853]/30 to-transparent" />
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em]">
-              Recruiter Scorecard
-            </CardTitle>
-            <span className="text-[10px] text-white/20">{periodLabel}</span>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-white/[0.04] hover:bg-transparent">
-                  <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Recruiter</TableHead>
-                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Total</TableHead>
-                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Submitted</TableHead>
-                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Interviews</TableHead>
-                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Offers</TableHead>
-                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Hires</TableHead>
-                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Active</TableHead>
-                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Sub→Int %</TableHead>
-                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Int→Hire %</TableHead>
-                  <TableHead className="text-white/25 text-right text-[10px] uppercase tracking-widest">Overall %</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recruiterPerf.slice(0, 15).map((r: any) => (
-                  <TableRow key={r.recruiterName} className="border-white/[0.03] hover:bg-white/[0.02]">
-                    <TableCell className="font-medium text-white/80">{r.recruiterName}</TableCell>
-                    <TableCell className="text-right text-white/50">{r.totalCandidates}</TableCell>
-                    <TableCell className="text-right text-[#D4A853] font-semibold">{r.submittedToClient}</TableCell>
-                    <TableCell className="text-right text-purple-400">{r.interviews}</TableCell>
-                    <TableCell className="text-right">
-                      {r.offers > 0 ? (
-                        <span className="text-amber-400 font-semibold">{r.offers}</span>
-                      ) : (
-                        <span className="text-white/20">0</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {r.hires > 0 ? (
-                        <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{r.hires}</Badge>
-                      ) : (
-                        <span className="text-white/20">0</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right text-white/40">{r.activePipeline}</TableCell>
-                    <TableCell className="text-right">
-                      <RateCell value={r.submitToInterviewRate} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <RateCell value={r.interviewToHireRate} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <RateCell value={r.overallPlacementRate} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
       </Card>
 
       {/* ============================================ */}
