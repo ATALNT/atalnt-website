@@ -9,7 +9,6 @@ const navLinks = [
   { label: 'About Us', href: '/about' },
   { label: 'Clients', href: '/#clients' },
   { label: 'Open Jobs', href: '/jobs' },
-  { label: 'Active Candidates', href: '/activetalent' },
 ];
 
 export const Navbar = () => {

@@ -10,7 +10,6 @@ const footerLinks = {
     { label: 'About Us', href: '/about' },
     { label: 'Leadership', href: '/#leadership' },
     { label: 'Careers', href: '/jobs' },
-    { label: 'Active Candidates', href: '/activetalent' },
     { label: 'Contact', href: '/contact' },
   ],
 };
