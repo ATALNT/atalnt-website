@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { RefreshCw, Signal, ChevronUp, ChevronDown, Lock, Power, Activity, Shield } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { RefreshCw, Signal, Lock, Power, Activity, Shield } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar, Cell } from 'recharts';
 
 // ============================================
 // Self-contained Instantly Health Monitor + Automation Control
@@ -52,8 +52,6 @@ interface AutomationResponse {
   timestamp: string;
 }
 
-type SortField = 'email' | 'health_score' | 'daily_limit';
-type SortDir = 'asc' | 'desc';
 type Tab = 'health' | 'automation';
 
 function LoginForm({ onLogin }: { onLogin: (password: string) => void }) {
@@ -115,8 +113,6 @@ export default function InstantlyDashboard() {
   const [loading, setLoading] = useState(false);
   const [autoLoading, setAutoLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sortField, setSortField] = useState<SortField>('health_score');
-  const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [toggling, setToggling] = useState<string | null>(null);
 
   // Hide Zoho SalesIQ
@@ -202,30 +198,6 @@ export default function InstantlyDashboard() {
   if (!token) {
     return <LoginForm onLogin={(t) => { setToken(t); fetchAccounts(t); fetchAutomation(t); }} />;
   }
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDir('asc');
-    }
-  };
-
-  const sortedAccounts = data?.accounts ? [...data.accounts].sort((a, b) => {
-    const dir = sortDir === 'asc' ? 1 : -1;
-    if (sortField === 'email') return dir * a.email.localeCompare(b.email);
-    const aVal = a[sortField] ?? -1;
-    const bVal = b[sortField] ?? -1;
-    return dir * (aVal - bVal);
-  }) : [];
-
-  const SortIcon = ({ field }: { field: SortField }) => {
-    if (sortField !== field) return null;
-    return sortDir === 'asc'
-      ? <ChevronUp className="h-3 w-3 inline ml-1" />
-      : <ChevronDown className="h-3 w-3 inline ml-1" />;
-  };
 
   const scoreColor = (score: number | null) => {
     if (score == null) return 'text-white/30';
@@ -331,73 +303,144 @@ export default function InstantlyDashboard() {
               </div>
             )}
 
-            {data && (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-6">
-                  {[
-                    { label: 'Total Accounts', value: data.summary.total, color: 'text-white' },
-                    { label: 'Healthy (97+)', value: data.summary.healthy, color: 'text-emerald-400' },
-                    { label: 'Unhealthy (<97)', value: data.summary.unhealthy, color: 'text-red-400' },
-                    { label: 'No Score', value: data.summary.no_score, color: 'text-white/40' },
-                    { label: 'Throttled (0)', value: data.summary.throttled, color: 'text-yellow-400' },
-                  ].map(card => (
-                    <div key={card.label} className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-4">
-                      <div className="text-[11px] text-[#8a8a9a] uppercase tracking-widest mb-1">{card.label}</div>
-                      <div className={`text-2xl font-bold font-display ${card.color}`}>{card.value}</div>
+            {data && (() => {
+              // Compute score distribution
+              const scoreDist: Record<number, number> = {};
+              let activeCount = 0;
+              let throttledCount = 0;
+              const problemAccounts = data.accounts.filter(a => {
+                if (a.daily_limit === 0) throttledCount++;
+                else activeCount++;
+                if (a.health_score != null) {
+                  scoreDist[a.health_score] = (scoreDist[a.health_score] || 0) + 1;
+                }
+                return a.health_score != null && a.health_score < 97;
+              }).sort((a, b) => (a.health_score ?? 0) - (b.health_score ?? 0));
+
+              const scoreChartData = Object.entries(scoreDist)
+                .map(([score, count]) => ({ score: Number(score), count }))
+                .sort((a, b) => a.score - b.score);
+
+              const healthRate = data.summary.total > 0
+                ? Math.round((data.summary.healthy / data.summary.total) * 100)
+                : 0;
+
+              return (
+                <>
+                  {/* Big KPI Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+                    <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-5">
+                      <div className="text-[11px] text-[#8a8a9a] uppercase tracking-widest mb-1">Health Rate</div>
+                      <div className={`text-3xl font-bold font-display ${healthRate >= 95 ? 'text-emerald-400' : healthRate >= 85 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {healthRate}%
+                      </div>
+                      <div className="text-[10px] text-white/30 mt-1">{data.summary.healthy} of {data.summary.total} accounts</div>
                     </div>
-                  ))}
-                </div>
-
-                <div className="text-[11px] text-white/20 mb-4">
-                  Last fetched: {new Date(data.timestamp).toLocaleString()}
-                </div>
-
-                <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-white/[0.06]">
-                          <th className="text-left px-4 py-3 text-[11px] text-[#8a8a9a] uppercase tracking-widest font-medium cursor-pointer hover:text-white/60 select-none"
-                              onClick={() => handleSort('email')}>
-                            Email <SortIcon field="email" />
-                          </th>
-                          <th className="text-center px-4 py-3 text-[11px] text-[#8a8a9a] uppercase tracking-widest font-medium cursor-pointer hover:text-white/60 select-none"
-                              onClick={() => handleSort('health_score')}>
-                            Health Score <SortIcon field="health_score" />
-                          </th>
-                          <th className="text-center px-4 py-3 text-[11px] text-[#8a8a9a] uppercase tracking-widest font-medium cursor-pointer hover:text-white/60 select-none"
-                              onClick={() => handleSort('daily_limit')}>
-                            Daily Limit <SortIcon field="daily_limit" />
-                          </th>
-                          <th className="text-center px-4 py-3 text-[11px] text-[#8a8a9a] uppercase tracking-widest font-medium">
-                            Status
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sortedAccounts.map(account => (
-                          <tr key={account.email} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
-                            <td className="px-4 py-2.5 text-white/80 font-mono text-xs">{account.email}</td>
-                            <td className={`px-4 py-2.5 text-center font-bold ${scoreColor(account.health_score)}`}>
-                              {account.health_score != null ? account.health_score : '\u2014'}
-                            </td>
-                            <td className="px-4 py-2.5 text-center">{limitBadge(account.daily_limit)}</td>
-                            <td className="px-4 py-2.5 text-center">
-                              {account.health_score != null && account.health_score >= 97
-                                ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">OK</span>
-                                : account.health_score != null
-                                ? <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-red-500/15 text-red-400 border border-red-500/20">LOW</span>
-                                : <span className="text-white/20">&mdash;</span>
-                              }
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-5">
+                      <div className="text-[11px] text-[#8a8a9a] uppercase tracking-widest mb-1">Active Sending</div>
+                      <div className="text-3xl font-bold font-display text-emerald-400">{activeCount}</div>
+                      <div className="text-[10px] text-white/30 mt-1">Daily limit &gt; 0</div>
+                    </div>
+                    <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-5">
+                      <div className="text-[11px] text-[#8a8a9a] uppercase tracking-widest mb-1">Turned Off</div>
+                      <div className={`text-3xl font-bold font-display ${throttledCount > 0 ? 'text-red-400' : 'text-white/40'}`}>{throttledCount}</div>
+                      <div className="text-[10px] text-white/30 mt-1">Throttled to 0 sends</div>
+                    </div>
+                    <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-5">
+                      <div className="text-[11px] text-[#8a8a9a] uppercase tracking-widest mb-1">Needs Attention</div>
+                      <div className={`text-3xl font-bold font-display ${problemAccounts.length > 0 ? 'text-yellow-400' : 'text-white/40'}`}>{problemAccounts.length}</div>
+                      <div className="text-[10px] text-white/30 mt-1">Score below 97</div>
+                    </div>
                   </div>
-                </div>
-              </>
-            )}
+
+                  {/* Score Distribution Chart */}
+                  <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-6 mb-6">
+                    <h3 className="text-white font-bold text-sm uppercase tracking-widest mb-4">Score Distribution</h3>
+                    <div className="h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={scoreChartData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                          <XAxis
+                            dataKey="score"
+                            tick={{ fill: '#8a8a9a', fontSize: 10 }}
+                            stroke="rgba(255,255,255,0.1)"
+                          />
+                          <YAxis
+                            tick={{ fill: '#8a8a9a', fontSize: 10 }}
+                            stroke="rgba(255,255,255,0.1)"
+                            allowDecimals={false}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#1a1b23',
+                              border: '1px solid rgba(255,255,255,0.1)',
+                              borderRadius: '8px',
+                              fontSize: '12px',
+                            }}
+                            formatter={(value: number) => [value, 'Accounts']}
+                            labelFormatter={(label) => `Score: ${label}`}
+                            labelStyle={{ color: '#D4A853', fontWeight: 600 }}
+                          />
+                          <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                            {scoreChartData.map((entry) => (
+                              <Cell
+                                key={entry.score}
+                                fill={entry.score >= 97 ? '#34d399' : entry.score >= 90 ? '#fbbf24' : '#f87171'}
+                              />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Problem Accounts Table — only unhealthy */}
+                  {problemAccounts.length > 0 && (
+                    <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] overflow-hidden mb-6">
+                      <div className="px-4 py-3 border-b border-white/[0.06]">
+                        <h3 className="text-white font-bold text-sm uppercase tracking-widest">
+                          Problem Accounts ({problemAccounts.length})
+                        </h3>
+                        <p className="text-[11px] text-[#8a8a9a] mt-0.5">Accounts with health score below 97 — auto-throttled to 0 daily sends</p>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-white/[0.06]">
+                              <th className="text-left px-4 py-3 text-[11px] text-[#8a8a9a] uppercase tracking-widest font-medium">Email</th>
+                              <th className="text-center px-4 py-3 text-[11px] text-[#8a8a9a] uppercase tracking-widest font-medium">Score</th>
+                              <th className="text-center px-4 py-3 text-[11px] text-[#8a8a9a] uppercase tracking-widest font-medium">Daily Limit</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {problemAccounts.map(account => (
+                              <tr key={account.email} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
+                                <td className="px-4 py-2.5 text-white/80 font-mono text-xs">{account.email}</td>
+                                <td className={`px-4 py-2.5 text-center font-bold ${scoreColor(account.health_score)}`}>
+                                  {account.health_score}
+                                </td>
+                                <td className="px-4 py-2.5 text-center">{limitBadge(account.daily_limit)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {problemAccounts.length === 0 && (
+                    <div className="rounded-xl bg-emerald-500/[0.04] border border-emerald-500/20 p-6 mb-6 text-center">
+                      <div className="text-emerald-400 font-bold text-sm mb-1">All Accounts Healthy</div>
+                      <div className="text-emerald-400/50 text-xs">Every account is scoring 97 or above — no action needed</div>
+                    </div>
+                  )}
+
+                  <div className="text-[11px] text-white/20">
+                    Last fetched: {new Date(data.timestamp).toLocaleString()} · Health cron runs at 6 AM & 6 PM CST
+                  </div>
+                </>
+              );
+            })()}
           </>
         )}
 
