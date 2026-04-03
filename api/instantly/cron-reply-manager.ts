@@ -375,6 +375,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Check kill switch
+  try {
+    const sbKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const sbUrl = process.env.VITE_SUPABASE_URL!;
+    const settingResp = await fetch(
+      `${sbUrl}/rest/v1/automation_settings?key=eq.reply_manager&select=enabled`,
+      { headers: { apikey: sbKey, Authorization: `Bearer ${sbKey}` } }
+    );
+    if (settingResp.ok) {
+      const rows = await settingResp.json();
+      if (rows.length > 0 && !rows[0].enabled) {
+        return res.status(200).json({ skipped: true, reason: 'Reply manager is disabled via kill switch' });
+      }
+    }
+  } catch { /* If Supabase is down, proceed anyway */ }
+
   const apiKey = process.env.INSTANTLY_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ error: 'INSTANTLY_API_KEY not configured' });

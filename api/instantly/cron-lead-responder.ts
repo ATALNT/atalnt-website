@@ -629,6 +629,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
+  // Check kill switch
+  try {
+    const settingResp = await fetch(
+      supabaseUrl('/automation_settings?key=eq.lead_responder&select=enabled'),
+      { headers: supabaseHeaders() }
+    );
+    if (settingResp.ok) {
+      const rows = await settingResp.json();
+      if (rows.length > 0 && !rows[0].enabled) {
+        return res.status(200).json({ skipped: true, reason: 'Lead responder is disabled via kill switch' });
+      }
+    }
+  } catch { /* If Supabase is down, proceed anyway */ }
+
   const instantlyApiKey = process.env.INSTANTLY_API_KEY;
   if (!instantlyApiKey) return res.status(500).json({ error: 'INSTANTLY_API_KEY not configured' });
 

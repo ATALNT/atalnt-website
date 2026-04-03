@@ -3,6 +3,14 @@
     {
       "path": "/api/instantly/cron-health-score",
       "schedule": "0 0,12 * * *"
+    },
+    {
+      "path": "/api/instantly/cron-reply-manager",
+      "schedule": "0 12,22 * * *"
+    },
+    {
+      "path": "/api/instantly/cron-lead-responder",
+      "schedule": "0 16,20,22 * * *"
     }
   ],
   "rewrites": [

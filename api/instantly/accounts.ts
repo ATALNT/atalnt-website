@@ -4,7 +4,24 @@
 // ============================================
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { verifyDashboardToken, corsHeaders } from '../lib/auth-middleware';
+
+// ── Inlined auth middleware ─────────────────────────────────────────
+function verifyDashboardToken(req: VercelRequest): boolean {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return false;
+  const token = authHeader.split(' ')[1];
+  const secret = process.env.DASHBOARD_SECRET;
+  if (!secret) return false;
+  return token === secret;
+}
+
+function corsHeaders(): Record<string, string> {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
+}
 
 interface InstantlyAccount {
   email: string;
