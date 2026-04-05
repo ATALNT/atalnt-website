@@ -624,7 +624,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           jobTitle: app.Job_Opening_Name || 'Unknown',
           clientName: (app.Job_Opening_Name && jobInfoMap.get(app.Job_Opening_Name)?.clientName) || zohoStr(app.Client_Name),
           recruiter: getRecruiter(app),
-          candidateRecruiter: candidateRecruiterMap.get(fullName) || 'Unassigned',
+          candidateRecruiter: getRecruiter(app),
           interviewStage: getInterviewStageLabel(app.Application_Status || '') || 'Unknown',
           stageOrder: INTERVIEW_STAGE_ORDER[app.Application_Status.toLowerCase().trim()] || 0,
           daysInStage: daysBetween(new Date(app.Updated_On), now),
@@ -711,7 +711,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     allApplications.forEach((app) => {
       const fullName = app.Full_Name || '';
-      const recruiter = candidateRecruiterMap.get(fullName) || getRecruiter(app);
+      const recruiter = getRecruiter(app);
       const status = app.Application_Status || '';
       const maxStage = getMaxFunnelStage(status);
       const jobTitle = app.Job_Opening_Name || 'Unknown';
