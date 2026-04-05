@@ -149,15 +149,14 @@ function getRecruiter(app: ZohoApplication): string {
   return 'Unassigned';
 }
 
-// Fetch ALL candidates with their recruiter and created date from the Candidates module (paginated bulk fetch)
-// Returns [recruiterMap (Full_Name → recruiter name), createdDateMap (Full_Name → Created_Time)]
-async function fetchAllCandidateRecruiters(accessToken: string): Promise<[Map<string, string>, Map<string, string>]> {
+// Fetch ALL candidates with their recruiter from the Candidates module (paginated bulk fetch)
+// Returns recruiterMap (Full_Name → recruiter name)
+async function fetchAllCandidateRecruiters(accessToken: string): Promise<Map<string, string>> {
   const recruiterMap = new Map<string, string>();
-  const createdDateMap = new Map<string, string>();
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Candidates?fields=Full_Name,Recruiter,Created_Time&page=${page}&per_page=200`;
+    const url = `https://recruit.zoho.com/recruit/v2/Candidates?fields=Full_Name,Recruiter&page=${page}&per_page=200`;
     const response = await fetch(url, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
     });
@@ -173,15 +172,13 @@ async function fetchAllCandidateRecruiters(accessToken: string): Promise<[Map<st
         if (recruiterName && recruiterName !== 'Unassigned') {
           recruiterMap.set(fullName, recruiterName);
         }
-        const createdTime = candidate.Created_Time || '';
-        if (createdTime) createdDateMap.set(fullName, createdTime);
       }
     }
     hasMore = data.info?.more_records ?? false;
     page++;
     if (page > 25) break; // Safety cap: 5000 candidates max
   }
-  return [recruiterMap, createdDateMap];
+  return recruiterMap;
 }
 
 async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?: string): Promise<ZohoApplication[]> {
@@ -274,7 +271,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { from, to } = req.query as { from?: string; to?: string };
     const accessToken = await getZohoAccessToken();
-    const [allApplications, jobInfoMap, [candidateRecruiterMap, candidateCreatedDateMap]] = await Promise.all([
+    const [allApplications, jobInfoMap, candidateRecruiterMap] = await Promise.all([
       fetchApplications(accessToken), // Fetch ALL — date filter applied below in memory
       fetchJobInfoMap(accessToken),
       fetchAllCandidateRecruiters(accessToken),
@@ -293,18 +290,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Consolidated Recruiter Report: filter by CANDIDATE Created_Time from Candidates module
-    // This reflects when the person was first added to Zoho, not when the application was created
-    let applicationsForConsolidatedReport = allApplications;
-    if (from || to) {
-      applicationsForConsolidatedReport = allApplications.filter((app) => {
-        const fullName = app.Full_Name || '';
-        const candidateCreated = candidateCreatedDateMap.get(fullName);
-        if (!candidateCreated) return false;
-        const t = new Date(candidateCreated).getTime();
-        return t >= fromTime && t <= toTime;
-      });
-    }
     const now = new Date();
 
     // =============================================
@@ -421,7 +406,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       active: number;
     }> = {};
 
-    applicationsForConsolidatedReport.forEach((app) => {
+    applications.forEach((app) => {
       // Use the actual recruiter from Candidates module, fall back to Ops person
       const fullName = app.Full_Name || '';
       const recruiter = candidateRecruiterMap.get(fullName) || getRecruiter(app);
@@ -466,7 +451,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       currentStatus: string; funnelStage: number; daysInStage: number; createdDate: string;
     }>> = {};
 
-    applicationsForConsolidatedReport.forEach((app) => {
+    applications.forEach((app) => {
       const fullName = app.Full_Name || '';
       const recruiter = candidateRecruiterMap.get(fullName) || getRecruiter(app);
       if (!recruiterCandidatesMap[recruiter]) recruiterCandidatesMap[recruiter] = [];
