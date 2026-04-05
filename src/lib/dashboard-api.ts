@@ -43,6 +43,16 @@ export async function fetchRecruitCandidates(token: string, from?: string, to?: 
   return fetchWithAuth(`/api/recruit/candidates${query}`, token);
 }
 
+// === CRM / Sales APIs ===
+
+export async function fetchSalesDashboard(token: string, from?: string, to?: string) {
+  const params = new URLSearchParams();
+  if (from) params.set('from', from);
+  if (to) params.set('to', to);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return fetchWithAuth(`/api/crm/deals${query}`, token);
+}
+
 // === Voice APIs ===
 
 export async function fetchVoiceCalls(token: string, preset?: string, from?: string, to?: string) {

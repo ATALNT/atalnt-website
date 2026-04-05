@@ -3,10 +3,11 @@ import { useAuth } from '@/hooks/use-auth';
 import { DashboardLogin } from '@/components/dashboard/DashboardLogin';
 import { RecruitDashboard } from '@/components/dashboard/RecruitDashboard';
 import { VoiceDashboard } from '@/components/dashboard/VoiceDashboard';
+import { SalesDashboard } from '@/components/dashboard/SalesDashboard';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LogOut, RefreshCw, Briefcase, Phone, Signal } from 'lucide-react';
+import { LogOut, RefreshCw, Briefcase, Phone, Signal, TrendingUp } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 function getDateRange(preset: string): { from: string; to: string } {
@@ -186,6 +187,13 @@ export default function Dashboard() {
               <Phone className="h-4 w-4" />
               <span className="hidden sm:inline">Phone & Texts</span>
             </TabsTrigger>
+            <TabsTrigger
+              value="sales"
+              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#D4A853] data-[state=active]:to-[#b8912e] data-[state=active]:text-black data-[state=active]:font-semibold data-[state=active]:shadow-lg data-[state=active]:shadow-[#D4A853]/20 flex items-center gap-2 px-6 text-white/60 transition-all"
+            >
+              <TrendingUp className="h-4 w-4" />
+              <span className="hidden sm:inline">Sales</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="recruit" className="mt-6">
@@ -194,6 +202,10 @@ export default function Dashboard() {
 
           <TabsContent value="voice" className="mt-6">
             <VoiceDashboard token={token} datePreset={datePreset} />
+          </TabsContent>
+
+          <TabsContent value="sales" className="mt-6">
+            <SalesDashboard token={token} datePreset={datePreset} dateRange={dateRange} />
           </TabsContent>
         </Tabs>
       </main>
