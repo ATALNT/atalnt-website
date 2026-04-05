@@ -270,11 +270,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { from, to } = req.query as { from?: string; to?: string };
     const accessToken = await getZohoAccessToken();
-    const [applications, jobInfoMap, candidateRecruiterMap] = await Promise.all([
-      fetchApplications(accessToken, from, to),
+    const [allApplications, jobInfoMap, candidateRecruiterMap] = await Promise.all([
+      fetchApplications(accessToken), // Fetch ALL — date filter applied below in memory
       fetchJobInfoMap(accessToken),
       fetchAllCandidateRecruiters(accessToken),
     ]);
+
+    // Apply date filter in memory for regular reports
+    let applications = allApplications;
+    if (from || to) {
+      const fromTime = from ? new Date(from).getTime() : 0;
+      const toTime = to ? new Date(to).getTime() : Date.now();
+      applications = allApplications.filter((app) => {
+        const created = new Date(app.Created_Time).getTime();
+        return created >= fromTime && created <= toTime;
+      });
+    }
     const now = new Date();
 
     // =============================================
@@ -645,7 +656,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
     // =============================================
-    // 12. DAILY VOLUME
+    // 12. RECRUITER FORM SUBMISSIONS REPORT
+    // Uses ALL applications (ignores date filter) so recruiters always
+    // see their full submission history regardless of dashboard date range
+    // =============================================
+    const formSubmissionStats: Record<string, {
+      totalFormSubmissions: number; submittedToClient: number; inInterview: number;
+      offers: number; hires: number; rejected: number; active: number;
+      candidates: Array<{ candidateName: string; jobTitle: string; clientName: string; currentStatus: string; funnelStage: number; daysInStage: number; createdDate: string }>;
+    }> = {};
+
+    allApplications.forEach((app) => {
+      const fullName = app.Full_Name || '';
+      const recruiter = candidateRecruiterMap.get(fullName) || getRecruiter(app);
+      const status = app.Application_Status || '';
+      const maxStage = getMaxFunnelStage(status);
+      const jobTitle = app.Job_Opening_Name || 'Unknown';
+      const clientName = (jobTitle !== 'Unknown' && jobInfoMap.get(jobTitle)?.clientName) || zohoStr(app.Client_Name) || '';
+
+      if (!formSubmissionStats[recruiter]) {
+        formSubmissionStats[recruiter] = { totalFormSubmissions: 0, submittedToClient: 0, inInterview: 0, offers: 0, hires: 0, rejected: 0, active: 0, candidates: [] };
+      }
+      const s = formSubmissionStats[recruiter];
+      s.totalFormSubmissions++;
+      if (maxStage >= 1) s.submittedToClient++;
+      if (maxStage >= 2) s.inInterview++;
+      if (maxStage >= 4) s.offers++;
+      if (maxStage >= 5) s.hires++;
+      if (getRejectionCategory(status)) s.rejected++;
+      if (isActiveStatus(status)) s.active++;
+      s.candidates.push({
+        candidateName: fullName || 'Unknown',
+        jobTitle,
+        clientName,
+        currentStatus: status || 'Unknown',
+        funnelStage: maxStage,
+        daysInStage: daysBetween(new Date(app.Updated_On), now),
+        createdDate: app.Created_Time?.split('T')[0] || '',
+      });
+    });
+
+    const recruiterFormSubmissions = Object.entries(formSubmissionStats)
+      .map(([recruiterName, s]) => ({
+        recruiterName,
+        totalFormSubmissions: s.totalFormSubmissions,
+        submittedToClient: s.submittedToClient,
+        inInterview: s.inInterview,
+        offers: s.offers,
+        hires: s.hires,
+        rejected: s.rejected,
+        active: s.active,
+        clientSubmissionRate: s.totalFormSubmissions > 0 ? Math.round((s.submittedToClient / s.totalFormSubmissions) * 100) : 0,
+        candidates: s.candidates.sort((a, b) => b.funnelStage - a.funnelStage || b.daysInStage - a.daysInStage),
+      }))
+      .sort((a, b) => b.totalFormSubmissions - a.totalFormSubmissions);
+
+    // =============================================
+    // 13. DAILY VOLUME
     // =============================================
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const dailyVolume: Record<string, number> = {};
@@ -691,6 +758,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .sort((a, b) => a.date.localeCompare(b.date)),
         interviewPipeline,
         openJobsReport,
+        recruiterFormSubmissions,
         interviewStageCounts: Object.entries(interviewStageCounts)
           .map(([stage, count]) => ({ stage, count }))
           .sort((a, b) => {
