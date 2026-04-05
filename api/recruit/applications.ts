@@ -149,14 +149,40 @@ function getRecruiter(app: ZohoApplication): string {
   return 'Unassigned';
 }
 
-// Fetch ALL candidates with their recruiter from the Candidates module (paginated bulk fetch)
-// Returns recruiterMap (Full_Name → recruiter name)
-async function fetchAllCandidateRecruiters(accessToken: string): Promise<Map<string, string>> {
-  const recruiterMap = new Map<string, string>();
+// Fetch candidates from the Candidates module, optionally filtered by Created_Time date range.
+// Uses the Zoho Recruit search API when a date range is provided for server-side efficiency.
+// Returns each candidate's name, recruiter, and creation date.
+async function fetchCandidatesInRange(
+  accessToken: string,
+  from?: string,
+  to?: string,
+): Promise<Array<{ fullName: string; recruiter: string; createdTime: string }>> {
+  const results: Array<{ fullName: string; recruiter: string; createdTime: string }> = [];
   let page = 1;
   let hasMore = true;
+  const fromTime = from ? new Date(from).getTime() : 0;
+  const toTime = to ? new Date(to).getTime() : Date.now();
+
+  let baseUrl: string;
+  if (from || to) {
+    // Build search criteria — use one day of buffer on each end for inclusive boundaries
+    const conditions: string[] = [];
+    if (from) {
+      const d = new Date(from); d.setDate(d.getDate() - 1);
+      conditions.push(`(Created_Time:after:${d.toISOString().split('T')[0]})`);
+    }
+    if (to) {
+      const d = new Date(to); d.setDate(d.getDate() + 1);
+      conditions.push(`(Created_Time:before:${d.toISOString().split('T')[0]})`);
+    }
+    const criteria = conditions.length === 1 ? conditions[0] : `(${conditions[0]}and${conditions[1]})`;
+    baseUrl = `https://recruit.zoho.com/recruit/v2/Candidates/search?criteria=${encodeURIComponent(criteria)}&fields=Full_Name,Recruiter,Created_Time`;
+  } else {
+    baseUrl = `https://recruit.zoho.com/recruit/v2/Candidates?fields=Full_Name,Recruiter,Created_Time`;
+  }
+
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Candidates?fields=Full_Name,Recruiter&page=${page}&per_page=200`;
+    const url = `${baseUrl}&page=${page}&per_page=200`;
     const response = await fetch(url, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
     });
@@ -166,19 +192,26 @@ async function fetchAllCandidateRecruiters(accessToken: string): Promise<Map<str
       for (const candidate of data.data) {
         const fullName = candidate.Full_Name;
         if (!fullName) continue;
+        const createdTime = candidate.Created_Time || '';
+        // Secondary in-memory filter as safety net for API boundary edge cases
+        if (from || to) {
+          const t = createdTime ? new Date(createdTime).getTime() : 0;
+          if (t < fromTime || t > toTime) continue;
+        }
         const rec = candidate.Recruiter;
-        if (!rec) continue;
-        const recruiterName = typeof rec === 'string' ? rec : rec?.name || zohoStr(rec, 'Unassigned');
-        if (recruiterName && recruiterName !== 'Unassigned') {
-          recruiterMap.set(fullName, recruiterName);
+        const recruiterName = rec
+          ? (typeof rec === 'string' ? rec : rec?.name || zohoStr(rec, ''))
+          : '';
+        if (recruiterName) {
+          results.push({ fullName, recruiter: recruiterName, createdTime });
         }
       }
     }
     hasMore = data.info?.more_records ?? false;
     page++;
-    if (page > 25) break; // Safety cap: 5000 candidates max
+    if (page > 50) break;
   }
-  return recruiterMap;
+  return results;
 }
 
 async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?: string): Promise<ZohoApplication[]> {
@@ -271,10 +304,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { from, to } = req.query as { from?: string; to?: string };
     const accessToken = await getZohoAccessToken();
-    const [allApplications, jobInfoMap, candidateRecruiterMap] = await Promise.all([
+    const [allApplications, jobInfoMap, candidatesInRange] = await Promise.all([
       fetchApplications(accessToken), // Fetch ALL — date filter applied below in memory
       fetchJobInfoMap(accessToken),
-      fetchAllCandidateRecruiters(accessToken),
+      fetchCandidatesInRange(accessToken, from as string | undefined, to as string | undefined),
     ]);
 
     // Apply date filter in memory for regular reports (uses Application Created_Time)
@@ -394,8 +427,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .sort((a, b) => b.daysSinceUpdate - a.daysSinceUpdate);
 
     // =============================================
-    // 6. RECRUITER PERFORMANCE (using flexible matching)
+    // 6. RECRUITER PERFORMANCE (sourced from Candidates module)
+    // candidatesInRange: candidates filtered by Created_Time from Candidates module
+    // Application data looked up by name for stage/status context
     // =============================================
+
+    // Build a lookup: most recent application per candidate name (allApplications sorted desc)
+    const latestAppByName = new Map<string, ZohoApplication>();
+    allApplications.forEach((app) => {
+      const name = app.Full_Name || '';
+      if (!latestAppByName.has(name)) latestAppByName.set(name, app);
+    });
+
     const recruiterStats: Record<string, {
       totalCandidates: number;
       reachedSubmission: number;
@@ -406,15 +449,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       active: number;
     }> = {};
 
-    applications.forEach((app) => {
-      // Use the actual recruiter from Candidates module, fall back to Ops person
-      const fullName = app.Full_Name || '';
-      const recruiter = candidateRecruiterMap.get(fullName) || getRecruiter(app);
+    candidatesInRange.forEach(({ fullName, recruiter }) => {
       if (!recruiterStats[recruiter]) {
         recruiterStats[recruiter] = { totalCandidates: 0, reachedSubmission: 0, reachedInterview: 0, reachedOffer: 0, hires: 0, rejected: 0, active: 0 };
       }
       const stats = recruiterStats[recruiter];
-      const status = app.Application_Status || '';
+      const app = latestAppByName.get(fullName);
+      const status = app?.Application_Status || '';
       const maxStage = getMaxFunnelStage(status);
 
       stats.totalCandidates++;
@@ -445,26 +486,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // =============================================
     // 6b. CONSOLIDATED RECRUITER DETAIL REPORT
     // =============================================
-    // Group all applications by actual recruiter with full candidate details
     const recruiterCandidatesMap: Record<string, Array<{
       candidateName: string; jobTitle: string; clientName: string;
       currentStatus: string; funnelStage: number; daysInStage: number; createdDate: string;
     }>> = {};
 
-    applications.forEach((app) => {
-      const fullName = app.Full_Name || '';
-      const recruiter = candidateRecruiterMap.get(fullName) || getRecruiter(app);
+    candidatesInRange.forEach(({ fullName, recruiter, createdTime }) => {
       if (!recruiterCandidatesMap[recruiter]) recruiterCandidatesMap[recruiter] = [];
-      const jobTitle = app.Job_Opening_Name || 'Unknown';
-      const clientName = (jobTitle && jobInfoMap.get(jobTitle)?.clientName) || zohoStr(app.Client_Name);
+      const app = latestAppByName.get(fullName);
+      const jobTitle = app?.Job_Opening_Name || 'Unknown';
+      const clientName = (jobTitle && jobInfoMap.get(jobTitle)?.clientName) || (app ? zohoStr(app.Client_Name) : 'Unknown');
       recruiterCandidatesMap[recruiter].push({
         candidateName: fullName || 'Unknown',
         jobTitle,
         clientName,
-        currentStatus: app.Application_Status || 'Unknown',
-        funnelStage: getMaxFunnelStage(app.Application_Status || ''),
-        daysInStage: daysBetween(new Date(app.Updated_On), now),
-        createdDate: app.Created_Time?.split('T')[0] || '',
+        currentStatus: app?.Application_Status || 'Unknown',
+        funnelStage: getMaxFunnelStage(app?.Application_Status || ''),
+        daysInStage: app ? daysBetween(new Date(app.Updated_On), now) : 0,
+        createdDate: createdTime.split('T')[0] || '',
       });
     });
 
