@@ -402,9 +402,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       active: number;
     }> = {};
 
-    // Consolidated Recruiter Report uses ALL applications (ignores date filter)
-    // so the report always shows each recruiter's complete candidate history
-    allApplications.forEach((app) => {
+    applications.forEach((app) => {
       // Use the actual recruiter from Candidates module, fall back to Ops person
       const fullName = app.Full_Name || '';
       const recruiter = candidateRecruiterMap.get(fullName) || getRecruiter(app);
@@ -449,7 +447,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       currentStatus: string; funnelStage: number; daysInStage: number; createdDate: string;
     }>> = {};
 
-    allApplications.forEach((app) => {
+    applications.forEach((app) => {
       const fullName = app.Full_Name || '';
       const recruiter = candidateRecruiterMap.get(fullName) || getRecruiter(app);
       if (!recruiterCandidatesMap[recruiter]) recruiterCandidatesMap[recruiter] = [];
