@@ -776,7 +776,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // =============================================
     // 12. RECRUITER FORM SUBMISSIONS REPORT
-    // Uses date-filtered applications to respect dashboard date range
+    // Uses candidatesInRange (Candidate module Created_Time) for date filtering
+    // Application data (status, job, client) looked up from latestAppByName
     // =============================================
     const formSubmissionStats: Record<string, {
       totalFormSubmissions: number; submittedToClient: number; inInterview: number;
@@ -784,13 +785,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       candidates: Array<{ candidateName: string; jobTitle: string; clientName: string; currentStatus: string; funnelStage: number; daysInStage: number; createdDate: string }>;
     }> = {};
 
-    applications.forEach((app) => {
-      const fullName = app.Full_Name || '';
-      const recruiter = allCandidateRecruiters.get(fullName) || getRecruiter(app);
-      const status = app.Application_Status || '';
+    candidatesInRange.forEach(({ fullName, recruiter, createdTime }) => {
+      const app = latestAppByName.get(fullName);
+      const status = app?.Application_Status || '';
       const maxStage = getMaxFunnelStage(status);
-      const jobTitle = app.Job_Opening_Name || 'Unknown';
-      const clientName = (jobTitle !== 'Unknown' && jobInfoMap.get(jobTitle)?.clientName) || zohoStr(app.Client_Name) || '';
+      const jobTitle = app?.Job_Opening_Name || 'Unknown';
+      const clientName = (jobTitle !== 'Unknown' && jobInfoMap.get(jobTitle)?.clientName) || (app ? zohoStr(app.Client_Name) : '') || '';
 
       if (!formSubmissionStats[recruiter]) {
         formSubmissionStats[recruiter] = { totalFormSubmissions: 0, submittedToClient: 0, inInterview: 0, offers: 0, hires: 0, rejected: 0, active: 0, candidates: [] };
@@ -809,8 +809,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clientName,
         currentStatus: status || 'Unknown',
         funnelStage: maxStage,
-        daysInStage: daysBetween(new Date(app.Updated_On), now),
-        createdDate: app.Created_Time?.split('T')[0] || '',
+        daysInStage: app ? daysBetween(new Date(app.Updated_On), now) : 0,
+        createdDate: createdTime?.split('T')[0] || '',
       });
     });
 
