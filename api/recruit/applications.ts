@@ -754,9 +754,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       candidates: Array<{ candidateName: string; jobTitle: string; clientName: string; currentStatus: string; funnelStage: number; daysInStage: number; createdDate: string }>;
     }> = {};
 
+    // Build recruiter lookup from Candidates module (candidatesInRange)
+    const candidateRecruiterLookup = new Map<string, string>();
+    candidatesInRange.forEach(({ fullName, recruiter }) => {
+      if (fullName && recruiter) candidateRecruiterLookup.set(fullName, recruiter);
+    });
+
     applications.forEach((app) => {
       const fullName = app.Full_Name || '';
-      const recruiter = getRecruiter(app);
+      const recruiter = candidateRecruiterLookup.get(fullName) || getRecruiter(app);
       const status = app.Application_Status || '';
       const maxStage = getMaxFunnelStage(status);
       const jobTitle = app.Job_Opening_Name || 'Unknown';
