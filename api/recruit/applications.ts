@@ -171,24 +171,10 @@ async function fetchCandidatesInRange(
   const fromTime = from ? new Date(from).getTime() : 0;
   const toTime = to ? new Date(to).getTime() : Date.now();
 
+  // Fetch ALL candidates sorted by Created_Time desc, filter in memory.
+  // Early-stop when records are older than the `from` date.
   const FIELDS = 'id,Full_Name,First_Name,Last_Name,City,Candidate_Stage,Recruiter,Source,Job_Opening_Name,Created_Time';
-  let baseUrl: string;
-  if (from || to) {
-    // Build search criteria — use one day of buffer on each end for inclusive boundaries
-    const conditions: string[] = [];
-    if (from) {
-      const d = new Date(from); d.setDate(d.getDate() - 1);
-      conditions.push(`(Created_Time:after:${d.toISOString().split('T')[0]})`);
-    }
-    if (to) {
-      const d = new Date(to); d.setDate(d.getDate() + 1);
-      conditions.push(`(Created_Time:before:${d.toISOString().split('T')[0]})`);
-    }
-    const criteria = conditions.length === 1 ? conditions[0] : `(${conditions[0]}and${conditions[1]})`;
-    baseUrl = `https://recruit.zoho.com/recruit/v2/Candidates/search?criteria=${encodeURIComponent(criteria)}&fields=${FIELDS}`;
-  } else {
-    baseUrl = `https://recruit.zoho.com/recruit/v2/Candidates?fields=${FIELDS}`;
-  }
+  const baseUrl = `https://recruit.zoho.com/recruit/v2/Candidates?fields=${FIELDS}&sort_by=Created_Time&sort_order=desc`;
 
   while (hasMore) {
     const url = `${baseUrl}&page=${page}&per_page=200`;
@@ -197,16 +183,17 @@ async function fetchCandidatesInRange(
     });
     if (!response.ok) { if (response.status === 204) break; break; }
     const data = await response.json();
+    let tooOld = false;
     if (data.data) {
       for (const candidate of data.data) {
         const fullName = candidate.Full_Name;
         if (!fullName) continue;
         const createdTime = candidate.Created_Time || '';
-        // Secondary in-memory filter as safety net for API boundary edge cases
-        if (from || to) {
-          const t = createdTime ? new Date(createdTime).getTime() : 0;
-          if (t < fromTime || t > toTime) continue;
-        }
+        const t = createdTime ? new Date(createdTime).getTime() : 0;
+        // Early stop: sorted desc, so once we're past `from` all remaining are older
+        if (from && t < fromTime) { tooOld = true; break; }
+        // Skip if after the `to` date
+        if (to && t > toTime) continue;
         const rec = candidate.Recruiter;
         const recruiterName = rec
           ? (typeof rec === 'string' ? rec : rec?.name || zohoStr(rec, ''))
@@ -228,6 +215,7 @@ async function fetchCandidatesInRange(
         }
       }
     }
+    if (tooOld) break;
     hasMore = data.info?.more_records ?? false;
     page++;
     if (page > 50) break;
