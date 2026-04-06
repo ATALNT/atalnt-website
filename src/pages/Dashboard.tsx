@@ -31,10 +31,12 @@ function getDateRange(preset: string): { from: string; to: string } {
     }
     case 'last_7_days': {
       const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      start.setHours(0, 0, 0, 0);
       return { from: start.toISOString(), to };
     }
     case 'last_30_days': {
       const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      start.setHours(0, 0, 0, 0);
       return { from: start.toISOString(), to };
     }
     case 'this_quarter': {
@@ -44,6 +46,7 @@ function getDateRange(preset: string): { from: string; to: string } {
     }
     case 'last_90_days': {
       const start = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      start.setHours(0, 0, 0, 0);
       return { from: start.toISOString(), to };
     }
     case 'all_time': {
