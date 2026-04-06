@@ -4,7 +4,7 @@
 // ============================================
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { detectServicesFromText, extractSalesProfile } from '../lib/freight-signals.js';
+import { detectServicesFromText, extractSalesProfile } from '../_lib/freight-signals.js';
 
 // --- Zoho OAuth (inlined for serverless, same pattern as candidates.ts) ---
 
