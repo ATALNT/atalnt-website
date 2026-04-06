@@ -156,13 +156,22 @@ async function fetchCandidatesInRange(
   accessToken: string,
   from?: string,
   to?: string,
-): Promise<Array<{ fullName: string; recruiter: string; createdTime: string }>> {
-  const results: Array<{ fullName: string; recruiter: string; createdTime: string }> = [];
+): Promise<Array<{
+  recordId: string; fullName: string; firstName: string; lastName: string;
+  city: string; candidateStage: string; recruiter: string; source: string;
+  jobOpening: string; createdTime: string;
+}>> {
+  const results: Array<{
+    recordId: string; fullName: string; firstName: string; lastName: string;
+    city: string; candidateStage: string; recruiter: string; source: string;
+    jobOpening: string; createdTime: string;
+  }> = [];
   let page = 1;
   let hasMore = true;
   const fromTime = from ? new Date(from).getTime() : 0;
   const toTime = to ? new Date(to).getTime() : Date.now();
 
+  const FIELDS = 'id,Full_Name,First_Name,Last_Name,City,Candidate_Stage,Recruiter,Source,Job_Opening_Name,Created_Time';
   let baseUrl: string;
   if (from || to) {
     // Build search criteria — use one day of buffer on each end for inclusive boundaries
@@ -176,9 +185,9 @@ async function fetchCandidatesInRange(
       conditions.push(`(Created_Time:before:${d.toISOString().split('T')[0]})`);
     }
     const criteria = conditions.length === 1 ? conditions[0] : `(${conditions[0]}and${conditions[1]})`;
-    baseUrl = `https://recruit.zoho.com/recruit/v2/Candidates/search?criteria=${encodeURIComponent(criteria)}&fields=Full_Name,Recruiter,Created_Time`;
+    baseUrl = `https://recruit.zoho.com/recruit/v2/Candidates/search?criteria=${encodeURIComponent(criteria)}&fields=${FIELDS}`;
   } else {
-    baseUrl = `https://recruit.zoho.com/recruit/v2/Candidates?fields=Full_Name,Recruiter,Created_Time`;
+    baseUrl = `https://recruit.zoho.com/recruit/v2/Candidates?fields=${FIELDS}`;
   }
 
   while (hasMore) {
@@ -203,7 +212,19 @@ async function fetchCandidatesInRange(
           ? (typeof rec === 'string' ? rec : rec?.name || zohoStr(rec, ''))
           : '';
         if (recruiterName) {
-          results.push({ fullName, recruiter: recruiterName, createdTime });
+          const jo = candidate.Job_Opening_Name;
+          results.push({
+            recordId: candidate.id || '',
+            fullName,
+            firstName: candidate.First_Name || '',
+            lastName: candidate.Last_Name || '',
+            city: candidate.City || '',
+            candidateStage: candidate.Candidate_Stage || '',
+            recruiter: recruiterName,
+            source: candidate.Source || '',
+            jobOpening: jo ? (typeof jo === 'string' ? jo : jo?.name || '') : '',
+            createdTime,
+          });
         }
       }
     }
@@ -515,6 +536,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }));
 
     // =============================================
+    // 6c. CANDIDATE SUBMISSIONS REPORT (Candidates module, date-filtered)
+    // Mirrors the Zoho Recruit Candidates export: Record Id, Job Opening,
+    // First Name, Last Name, City, Candidate Stage, Source, Created Time
+    // =============================================
+    const submissionsGrouped: Record<string, Array<{
+      recordId: string; jobOpening: string; firstName: string; lastName: string;
+      city: string; candidateStage: string; source: string; createdTime: string;
+    }>> = {};
+
+    candidatesInRange.forEach(({ recordId, firstName, lastName, city, candidateStage, recruiter, source, jobOpening, createdTime, fullName }) => {
+      if (!submissionsGrouped[recruiter]) submissionsGrouped[recruiter] = [];
+      // Fall back to Applications module for job opening if Candidates module field is empty
+      const resolvedJobOpening = jobOpening || latestAppByName.get(fullName)?.Job_Opening_Name || '';
+      submissionsGrouped[recruiter].push({ recordId, jobOpening: resolvedJobOpening, firstName, lastName, city, candidateStage, source, createdTime });
+    });
+
+    const candidateSubmissionsReport = Object.entries(submissionsGrouped)
+      .map(([recruiterName, candidates]) => ({
+        recruiterName,
+        count: candidates.length,
+        candidates: candidates.sort((a, b) => new Date(b.createdTime).getTime() - new Date(a.createdTime).getTime()),
+      }))
+      .sort((a, b) => b.count - a.count);
+
+    // =============================================
     // 7. CLIENT HEALTH (using flexible matching)
     // =============================================
     const clientStats: Record<string, {
@@ -802,6 +848,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         interviewPipeline,
         openJobsReport,
         recruiterFormSubmissions,
+        candidateSubmissionsReport,
         interviewStageCounts: Object.entries(interviewStageCounts)
           .map(([stage, count]) => ({ stage, count }))
           .sort((a, b) => {
