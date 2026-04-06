@@ -746,8 +746,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // =============================================
     // 12. RECRUITER FORM SUBMISSIONS REPORT
-    // Uses ALL applications (ignores date filter) so recruiters always
-    // see their full submission history regardless of dashboard date range
+    // Uses date-filtered applications to respect dashboard date range
     // =============================================
     const formSubmissionStats: Record<string, {
       totalFormSubmissions: number; submittedToClient: number; inInterview: number;
@@ -755,7 +754,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       candidates: Array<{ candidateName: string; jobTitle: string; clientName: string; currentStatus: string; funnelStage: number; daysInStage: number; createdDate: string }>;
     }> = {};
 
-    allApplications.forEach((app) => {
+    applications.forEach((app) => {
       const fullName = app.Full_Name || '';
       const recruiter = getRecruiter(app);
       const status = app.Application_Status || '';
