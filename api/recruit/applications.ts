@@ -235,6 +235,35 @@ async function fetchCandidatesInRange(
   return results;
 }
 
+// Fetch ALL candidates' recruiter names (no date filter) for accurate recruiter attribution
+async function fetchAllCandidateRecruiters(accessToken: string): Promise<Map<string, string>> {
+  const recruiterMap = new Map<string, string>();
+  let page = 1;
+  let hasMore = true;
+  while (hasMore) {
+    const url = `https://recruit.zoho.com/recruit/v2/Candidates?fields=Full_Name,Recruiter&page=${page}&per_page=200`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) { if (response.status === 204) break; break; }
+    const data = await response.json();
+    if (data.data) {
+      for (const candidate of data.data) {
+        const fullName = candidate.Full_Name;
+        if (!fullName) continue;
+        const rec = candidate.Recruiter;
+        if (!rec) continue;
+        const recruiterName = typeof rec === 'string' ? rec : rec?.name || zohoStr(rec, '');
+        if (recruiterName) recruiterMap.set(fullName, recruiterName);
+      }
+    }
+    hasMore = data.info?.more_records ?? false;
+    page++;
+    if (page > 25) break;
+  }
+  return recruiterMap;
+}
+
 async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?: string): Promise<ZohoApplication[]> {
   const allApps: ZohoApplication[] = [];
   let page = 1;
@@ -325,10 +354,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { from, to } = req.query as { from?: string; to?: string };
     const accessToken = await getZohoAccessToken();
-    const [allApplications, jobInfoMap, candidatesInRange] = await Promise.all([
+    const [allApplications, jobInfoMap, candidatesInRange, allCandidateRecruiters] = await Promise.all([
       fetchApplications(accessToken), // Fetch ALL — date filter applied below in memory
       fetchJobInfoMap(accessToken),
       fetchCandidatesInRange(accessToken, from as string | undefined, to as string | undefined),
+      fetchAllCandidateRecruiters(accessToken), // ALL candidates → recruiter map (no date filter)
     ]);
 
     // Apply date filter in memory for regular reports (uses Application Created_Time)
@@ -754,15 +784,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       candidates: Array<{ candidateName: string; jobTitle: string; clientName: string; currentStatus: string; funnelStage: number; daysInStage: number; createdDate: string }>;
     }> = {};
 
-    // Build recruiter lookup from Candidates module (candidatesInRange)
-    const candidateRecruiterLookup = new Map<string, string>();
-    candidatesInRange.forEach(({ fullName, recruiter }) => {
-      if (fullName && recruiter) candidateRecruiterLookup.set(fullName, recruiter);
-    });
-
     applications.forEach((app) => {
       const fullName = app.Full_Name || '';
-      const recruiter = candidateRecruiterLookup.get(fullName) || getRecruiter(app);
+      const recruiter = allCandidateRecruiters.get(fullName) || getRecruiter(app);
       const status = app.Application_Status || '';
       const maxStage = getMaxFunnelStage(status);
       const jobTitle = app.Job_Opening_Name || 'Unknown';
