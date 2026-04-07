@@ -94,11 +94,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const accessToken = await getZohoAccessToken();
     const now = new Date();
 
-    // Fetch all three modules in parallel
-    const [allLeads, allDeals, allCalls] = await Promise.all([
+    // Fetch all four modules in parallel
+    const [allLeads, allDeals, allCalls, allAccounts] = await Promise.all([
       fetchCrmModule(accessToken, 'Leads', 'First_Name,Last_Name,Email,Phone,Lead_Source,Lead_Status,Owner,Created_Time,Company'),
       fetchCrmModule(accessToken, 'Deals', 'Deal_Name,Stage,Amount,Closing_Date,Account_Name,Owner,Created_Time,Modified_Time'),
       fetchCrmModule(accessToken, 'Calls', 'Subject,Call_Type,Call_Duration,Owner,Created_Time,Call_Status,Who_Id'),
+      fetchCrmModule(accessToken, 'Accounts', 'Account_Name,Phone,Website,Industry,Owner,Created_Time'),
     ]);
 
     // Apply date filter to leads and calls
@@ -236,6 +237,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .map(([ownerName, c]) => ({ ownerName, ...c }))
       .sort((a, b) => b.totalCalls - a.totalCalls);
 
+    // =============================================
+    // CLIENTS (ACCOUNTS)
+    // =============================================
+    const clients = allAccounts
+      .map((a) => ({
+        accountName: zohoStr(a.Account_Name, 'Unnamed'),
+        phone: zohoStr(a.Phone, ''),
+        website: zohoStr(a.Website, ''),
+        industry: zohoStr(a.Industry, ''),
+        owner: zohoStr(a.Owner, 'Unassigned'),
+        createdTime: a.Created_Time || '',
+      }))
+      .sort((a, b) => new Date(b.createdTime).getTime() - new Date(a.createdTime).getTime());
+
     return res.status(200).json({
       success: true,
       data: {
@@ -246,6 +261,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         dealsByOwner,
         recentDeals,
         callsByOwner,
+        clients,
       },
       timestamp: new Date().toISOString(),
     });

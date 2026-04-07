@@ -8,7 +8,7 @@ import { DashboardCard } from './DashboardCard';
 import { fetchSalesDashboard } from '@/lib/dashboard-api';
 import {
   TrendingUp, Users, DollarSign, Phone, Target, ChevronDown, ChevronUp,
-  AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Briefcase
+  AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Briefcase, Building2
 } from 'lucide-react';
 
 interface SalesDashboardProps {
@@ -54,6 +54,8 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
   const [ownerExpanded, setOwnerExpanded] = useState(true);
   const [callsExpanded, setCallsExpanded] = useState(true);
   const [leadsExpanded, setLeadsExpanded] = useState(true);
+  const [clientsExpanded, setClientsExpanded] = useState(true);
+  const [clientsSort, setClientsSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'createdTime', dir: 'desc' });
   const [pipelineSort, setPipelineSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'amount', dir: 'desc' });
   const [ownerSort, setOwnerSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalDeals', dir: 'desc' });
 
@@ -79,7 +81,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
   const d = salesQuery.data?.data;
   if (!d) return null;
 
-  const { overview, leadsBySource, leadsByStatus, dealsByStage, dealsByOwner, recentDeals, callsByOwner } = d;
+  const { overview, leadsBySource, leadsByStatus, dealsByStage, dealsByOwner, recentDeals, callsByOwner, clients = [] } = d;
   const periodLabel = datePreset.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
   function SortHead({ col, currentSort, setSort }: { col: { key: string; label: string; align?: string }; currentSort: { key: string; dir: 'asc' | 'desc' }; setSort: (s: { key: string; dir: 'asc' | 'desc' }) => void }) {
@@ -379,6 +381,72 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
             </div>
           ) : (
             <p className="text-center text-white/30 py-8">No calls logged in this period</p>
+          )}
+        </CardContent>}
+      </Card>
+
+      {/* ============================================ */}
+      {/* CLIENTS (ACCOUNTS)                           */}
+      {/* ============================================ */}
+      <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D4A853]/30 to-transparent" />
+        <CardHeader className="pb-2 cursor-pointer select-none" onClick={() => setClientsExpanded((v) => !v)}>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+              {clientsExpanded ? <ChevronUp className="h-3.5 w-3.5 text-[#D4A853]/60" /> : <ChevronDown className="h-3.5 w-3.5 text-[#D4A853]/60" />}
+              <Building2 className="h-3.5 w-3.5 text-[#D4A853]/60" />
+              Clients
+            </CardTitle>
+            <Badge variant="secondary" className="bg-[#D4A853]/10 text-[#D4A853] border border-[#D4A853]/20 text-xs">
+              {clients.length} Total
+            </Badge>
+          </div>
+        </CardHeader>
+        {clientsExpanded && <CardContent>
+          {clients.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/[0.04] hover:bg-transparent">
+                    <SortHead col={{ key: 'accountName', label: 'Client Name', align: 'text-left' }} currentSort={clientsSort} setSort={setClientsSort} />
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Industry</TableHead>
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Phone</TableHead>
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Website</TableHead>
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Owner</TableHead>
+                    <SortHead col={{ key: 'createdTime', label: 'Created Date' }} currentSort={clientsSort} setSort={setClientsSort} />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...clients].sort((a: any, b: any) => {
+                    const k = clientsSort.key;
+                    const dir = clientsSort.dir === 'asc' ? 1 : -1;
+                    if (k === 'createdTime') return (new Date(a[k]).getTime() - new Date(b[k]).getTime()) * dir;
+                    return String(a[k] || '').localeCompare(String(b[k] || '')) * dir;
+                  }).map((c: any, i: number) => {
+                    const dt = c.createdTime ? new Date(c.createdTime) : null;
+                    const formatted = dt
+                      ? dt.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+                      : '—';
+                    return (
+                      <TableRow key={i} className="border-white/[0.03] hover:bg-white/[0.02]">
+                        <TableCell className="font-medium text-white/80">{c.accountName}</TableCell>
+                        <TableCell className="text-white/50 text-xs">{c.industry || '—'}</TableCell>
+                        <TableCell className="text-white/50 text-xs">{c.phone || '—'}</TableCell>
+                        <TableCell className="text-white/50 text-xs">
+                          {c.website ? (
+                            <span className="text-blue-400/70 hover:text-blue-400 cursor-pointer">{c.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}</span>
+                          ) : '—'}
+                        </TableCell>
+                        <TableCell className="text-white/40 text-xs">{c.owner}</TableCell>
+                        <TableCell className="text-right text-white/40 text-xs">{formatted}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="text-center text-white/30 py-8">No client accounts found</p>
           )}
         </CardContent>}
       </Card>
