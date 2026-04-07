@@ -688,7 +688,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           jobTitle: app.Job_Opening_Name || 'Unknown',
           clientName: (app.Job_Opening_Name && jobInfoMap.get(app.Job_Opening_Name)?.clientName) || zohoStr(app.Client_Name),
           recruiter: getRecruiter(app),
-          candidateRecruiter: getRecruiter(app),
+          candidateRecruiter: allCandidateRecruiters.get(fullName) || 'Unassigned',
           interviewStage: getInterviewStageLabel(app.Application_Status || '') || 'Unknown',
           stageOrder: INTERVIEW_STAGE_ORDER[app.Application_Status.toLowerCase().trim()] || 0,
           daysInStage: daysBetween(new Date(app.Updated_On), now),
