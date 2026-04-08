@@ -9,9 +9,31 @@ import { fetchRecruitJobs, fetchRecruitApplications } from '@/lib/dashboard-api'
 import {
   Briefcase, Users, Send, Trophy, AlertTriangle, Clock, TrendingDown,
   ChevronDown, ChevronUp, ArrowRight, HelpCircle, Building2, UserCheck,
-  Zap, AlertCircle, Info, FileText, ArrowUpDown, ArrowUp, ArrowDown, Download
+  Zap, AlertCircle, Info, FileText, ArrowUpDown, ArrowUp, ArrowDown, Download, Search
 } from 'lucide-react';
 import { exportToExcel } from '@/lib/export-excel';
+
+function SearchInput({ value, onChange, placeholder = 'Search...' }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <div className="relative mb-3">
+      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/20" />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        placeholder={placeholder}
+        className="w-full pl-8 pr-3 py-1.5 text-xs text-white/70 placeholder:text-white/20 bg-white/[0.03] border border-white/[0.06] rounded-md focus:outline-none focus:border-white/[0.15] focus:bg-white/[0.04] transition-colors"
+      />
+    </div>
+  );
+}
+
+function matchesSearch(row: Record<string, any>, query: string, keys: string[]): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  return keys.some((k) => String(row[k] || '').toLowerCase().includes(q));
+}
 
 // Colors for funnel stages (from API)
 const FUNNEL_COLORS: Record<string, string> = {
@@ -73,6 +95,9 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const [formSubmissionsExpanded, setFormSubmissionsExpanded] = useState(true);
   const [formSubmissionsSort, setFormSubmissionsSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalFormSubmissions', dir: 'desc' });
   const [expandedFormRecruiters, setExpandedFormRecruiters] = useState<Set<string>>(new Set());
+  const [jobsSearch, setJobsSearch] = useState('');
+  const [interviewSearch, setInterviewSearch] = useState('');
+  const [submissionsSearch, setSubmissionsSearch] = useState('');
 
   const jobsQuery = useQuery({
     queryKey: ['recruit', 'jobs'],
@@ -245,6 +270,8 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
         </CardHeader>
         {openJobsExpanded && <CardContent>
           {openJobsReport.length > 0 ? (
+            <>
+            <SearchInput value={jobsSearch} onChange={setJobsSearch} placeholder="Search jobs, clients, recruiters..." />
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -280,7 +307,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...openJobsReport].sort((a: any, b: any) => {
+                  {[...openJobsReport].filter((j: any) => matchesSearch(j, jobsSearch, ['jobTitle', 'clientName', 'priorityTier', 'assignedRecruiter'])).sort((a: any, b: any) => {
                     const k = openJobsSort.key;
                     const dir = openJobsSort.dir === 'asc' ? 1 : -1;
                     if (k === 'daysOpen' || k === 'totalSubmissions' || k === 'interviewCount') return (a[k] - b[k]) * dir;
@@ -396,6 +423,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                 </TableBody>
               </Table>
             </div>
+            </>
           ) : (
             <p className="text-center text-white/30 py-8">No open jobs found</p>
           )}
@@ -430,6 +458,8 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
         </CardHeader>
         {interviewExpanded && <CardContent>
           {interviewPipeline.length > 0 ? (
+            <>
+            <SearchInput value={interviewSearch} onChange={setInterviewSearch} placeholder="Search candidates, jobs, clients, recruiters..." />
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -464,7 +494,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...interviewPipeline].sort((a: any, b: any) => {
+                  {[...interviewPipeline].filter((item: any) => matchesSearch(item, interviewSearch, ['candidateName', 'jobTitle', 'clientName', 'recruiter', 'candidateRecruiter', 'interviewStage'])).sort((a: any, b: any) => {
                     const k = interviewSort.key;
                     const dir = interviewSort.dir === 'asc' ? 1 : -1;
                     if (k === 'daysInStage' || k === 'stageOrder') return (a[k] - b[k]) * dir;
@@ -510,6 +540,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                 </TableBody>
               </Table>
             </div>
+            </>
           ) : (
             <p className="text-center text-white/30 py-8">No candidates currently in interview stages</p>
           )}
@@ -549,6 +580,8 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
         </CardHeader>
         {formSubmissionsExpanded && <CardContent>
           {recruiterFormSubmissions.length > 0 ? (
+            <>
+            <SearchInput value={submissionsSearch} onChange={setSubmissionsSearch} placeholder="Search recruiters, candidates..." />
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -585,7 +618,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...recruiterFormSubmissions].sort((a: any, b: any) => {
+                  {[...recruiterFormSubmissions].filter((r: any) => matchesSearch(r, submissionsSearch, ['recruiterName']) || r.candidates?.some((c: any) => matchesSearch(c, submissionsSearch, ['candidateName', 'jobTitle', 'clientName']))).sort((a: any, b: any) => {
                     const k = formSubmissionsSort.key;
                     const dir = formSubmissionsSort.dir === 'asc' ? 1 : -1;
                     if (k === 'recruiterName') return String(a[k] || '').localeCompare(String(b[k] || '')) * dir;
@@ -646,6 +679,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
                 </TableBody>
               </Table>
             </div>
+            </>
           ) : (
             <p className="text-center text-white/30 py-8">No form submission data available</p>
           )}

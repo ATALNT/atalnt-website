@@ -8,9 +8,31 @@ import { DashboardCard } from './DashboardCard';
 import { fetchSalesDashboard } from '@/lib/dashboard-api';
 import {
   TrendingUp, Users, DollarSign, Phone, Target, ChevronDown, ChevronUp,
-  AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Briefcase, Building2, FileSignature, Download
+  AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Briefcase, Building2, FileSignature, Download, Search
 } from 'lucide-react';
 import { exportToExcel } from '@/lib/export-excel';
+
+function SearchInput({ value, onChange, placeholder = 'Search...' }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <div className="relative mb-3">
+      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-white/20" />
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onClick={(e) => e.stopPropagation()}
+        placeholder={placeholder}
+        className="w-full pl-8 pr-3 py-1.5 text-xs text-white/70 placeholder:text-white/20 bg-white/[0.03] border border-white/[0.06] rounded-md focus:outline-none focus:border-white/[0.15] focus:bg-white/[0.04] transition-colors"
+      />
+    </div>
+  );
+}
+
+function matchesSearch(row: Record<string, any>, query: string, keys: string[]): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  return keys.some((k) => String(row[k] || '').toLowerCase().includes(q));
+}
 
 interface SalesDashboardProps {
   token: string;
@@ -62,6 +84,10 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
   const [signFilter, setSignFilter] = useState<string>('all');
   const [pipelineSort, setPipelineSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'amount', dir: 'desc' });
   const [ownerSort, setOwnerSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalDeals', dir: 'desc' });
+  const [pipelineSearch, setPipelineSearch] = useState('');
+  const [ownerSearch, setOwnerSearch] = useState('');
+  const [clientsSearch, setClientsSearch] = useState('');
+  const [signSearch, setSignSearch] = useState('');
 
   const salesQuery = useQuery({
     queryKey: ['sales', 'deals', datePreset],
@@ -197,6 +223,8 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
             ))}
           </div>
           {recentDeals.length > 0 ? (
+            <>
+            <SearchInput value={pipelineSearch} onChange={setPipelineSearch} placeholder="Search deals, accounts, owners..." />
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -210,7 +238,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...recentDeals].sort((a: any, b: any) => {
+                  {[...recentDeals].filter((d: any) => matchesSearch(d, pipelineSearch, ['dealName', 'accountName', 'stage', 'ownerName'])).sort((a: any, b: any) => {
                     const k = pipelineSort.key;
                     const dir = pipelineSort.dir === 'asc' ? 1 : -1;
                     return ((a[k] ?? 0) - (b[k] ?? 0)) * dir;
@@ -235,6 +263,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
                 </TableBody>
               </Table>
             </div>
+            </>
           ) : (
             <p className="text-center text-white/30 py-8">No open deals</p>
           )}
@@ -261,6 +290,8 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
         </CardHeader>
         {ownerExpanded && <CardContent>
           {dealsByOwner.length > 0 ? (
+            <>
+            <SearchInput value={ownerSearch} onChange={setOwnerSearch} placeholder="Search sales reps..." />
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -275,7 +306,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...dealsByOwner].sort((a: any, b: any) => {
+                  {[...dealsByOwner].filter((o: any) => matchesSearch(o, ownerSearch, ['ownerName'])).sort((a: any, b: any) => {
                     const k = ownerSort.key;
                     const dir = ownerSort.dir === 'asc' ? 1 : -1;
                     return ((a[k] || 0) - (b[k] || 0)) * dir;
@@ -295,6 +326,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
                 </TableBody>
               </Table>
             </div>
+            </>
           ) : (
             <p className="text-center text-white/30 py-8">No deal data available</p>
           )}
@@ -426,6 +458,8 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
         </CardHeader>
         {clientsExpanded && <CardContent>
           {clients.length > 0 ? (
+            <>
+            <SearchInput value={clientsSearch} onChange={setClientsSearch} placeholder="Search clients, industry, owner..." />
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -439,7 +473,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {[...clients].sort((a: any, b: any) => {
+                  {[...clients].filter((c: any) => matchesSearch(c, clientsSearch, ['accountName', 'industry', 'phone', 'website', 'owner'])).sort((a: any, b: any) => {
                     const k = clientsSort.key;
                     const dir = clientsSort.dir === 'asc' ? 1 : -1;
                     if (k === 'createdTime') return (new Date(a[k]).getTime() - new Date(b[k]).getTime()) * dir;
@@ -467,6 +501,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
                 </TableBody>
               </Table>
             </div>
+            </>
           ) : (
             <p className="text-center text-white/30 py-8">No client accounts found</p>
           )}
@@ -523,6 +558,8 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
             })}
           </div>
           {signDocuments.length > 0 ? (
+            <>
+            <SearchInput value={signSearch} onChange={setSignSearch} placeholder="Search documents, recipients, owners..." />
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -536,7 +573,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
                 </TableHeader>
                 <TableBody>
                   {[...signDocuments]
-                    .filter((d: any) => signFilter === 'all' || d.status === signFilter)
+                    .filter((d: any) => (signFilter === 'all' || d.status === signFilter) && matchesSearch({ ...d, recipientNames: d.recipients?.map((r: any) => r.name).join(' ') || '' }, signSearch, ['documentName', 'owner', 'recipientNames']))
                     .sort((a: any, b: any) => {
                       const k = signSort.key;
                       const dir = signSort.dir === 'asc' ? 1 : -1;
@@ -587,6 +624,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
                 </TableBody>
               </Table>
             </div>
+            </>
           ) : (
             <p className="text-center text-white/30 py-8">No Zoho Sign documents found</p>
           )}
