@@ -9,8 +9,9 @@ import { fetchRecruitJobs, fetchRecruitApplications } from '@/lib/dashboard-api'
 import {
   Briefcase, Users, Send, Trophy, AlertTriangle, Clock, TrendingDown,
   ChevronDown, ChevronUp, ArrowRight, HelpCircle, Building2, UserCheck,
-  Zap, AlertCircle, Info, FileText, ArrowUpDown, ArrowUp, ArrowDown
+  Zap, AlertCircle, Info, FileText, ArrowUpDown, ArrowUp, ArrowDown, Download
 } from 'lucide-react';
+import { exportToExcel } from '@/lib/export-excel';
 
 // Colors for funnel stages (from API)
 const FUNNEL_COLORS: Record<string, string> = {
@@ -238,6 +239,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
               <Badge variant="secondary" className="bg-[#D4A853]/10 text-[#D4A853] border border-[#D4A853]/20 text-xs">
                 {openJobsReport.length} Total
               </Badge>
+              <button onClick={(e) => { e.stopPropagation(); exportToExcel(openJobsReport, [{ key: 'jobTitle', label: 'Job Title' }, { key: 'clientName', label: 'Client' }, { key: 'priorityTier', label: 'Tier' }, { key: 'totalSubmissions', label: 'Submissions' }, { key: 'interviewCount', label: 'Interviews' }, { key: 'daysOpen', label: 'Days Open' }], 'Open_Jobs', 'Jobs'); }} className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded px-2 py-1 transition-colors" title="Export to Excel"><Download className="h-3 w-3" />Excel</button>
             </div>
           </div>
         </CardHeader>
@@ -422,6 +424,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
               <Badge variant="secondary" className="bg-purple-500/10 text-purple-400 border border-purple-500/20 text-xs">
                 {interviewPipeline.length} Total
               </Badge>
+              <button onClick={(e) => { e.stopPropagation(); exportToExcel(interviewPipeline, [{ key: 'candidateName', label: 'Candidate' }, { key: 'interviewStage', label: 'Stage' }, { key: 'jobTitle', label: 'Job Title' }, { key: 'clientName', label: 'Client' }, { key: 'recruiter', label: 'Ops Lead' }, { key: 'candidateRecruiter', label: 'Recruiter' }, { key: 'daysInStage', label: 'Days in Stage' }], 'Interview_Pipeline', 'Interviews'); }} className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded px-2 py-1 transition-colors" title="Export to Excel"><Download className="h-3 w-3" />Excel</button>
             </div>
           </div>
         </CardHeader>
@@ -540,6 +543,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
               <Badge variant="secondary" className="bg-[#D4A853]/10 text-[#D4A853] border border-[#D4A853]/20 text-xs">
                 {recruiterFormSubmissions.length} Recruiters
               </Badge>
+              <button onClick={(e) => { e.stopPropagation(); const rows: any[] = []; recruiterFormSubmissions.forEach((r: any) => { r.candidates.forEach((c: any) => { rows.push({ recruiter: r.recruiterName, candidate: c.candidateName, jobTitle: c.jobTitle, client: c.clientName, status: c.currentStatus, daysInStage: c.daysInStage, createdDate: c.createdDate }); }); }); exportToExcel(rows, [{ key: 'recruiter', label: 'Recruiter' }, { key: 'candidate', label: 'Candidate' }, { key: 'jobTitle', label: 'Job Title' }, { key: 'client', label: 'Client' }, { key: 'status', label: 'Status' }, { key: 'daysInStage', label: 'Days in Stage' }, { key: 'createdDate', label: 'Created Date' }], 'Recruiter_Submissions', 'Submissions'); }} className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded px-2 py-1 transition-colors" title="Export to Excel"><Download className="h-3 w-3" />Excel</button>
             </div>
           </div>
         </CardHeader>

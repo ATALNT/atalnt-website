@@ -8,8 +8,9 @@ import { DashboardCard } from './DashboardCard';
 import { fetchSalesDashboard } from '@/lib/dashboard-api';
 import {
   TrendingUp, Users, DollarSign, Phone, Target, ChevronDown, ChevronUp,
-  AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Briefcase, Building2, FileSignature
+  AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Briefcase, Building2, FileSignature, Download
 } from 'lucide-react';
+import { exportToExcel } from '@/lib/export-excel';
 
 interface SalesDashboardProps {
   token: string;
@@ -103,6 +104,19 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
     );
   }
 
+  function ExportBtn({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
+    return (
+      <button
+        onClick={onClick}
+        className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded px-2 py-1 transition-colors"
+        title="Export to Excel"
+      >
+        <Download className="h-3 w-3" />
+        Excel
+      </button>
+    );
+  }
+
   return (
     <div className="space-y-6">
 
@@ -166,6 +180,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
               <Badge variant="secondary" className="bg-[#D4A853]/10 text-[#D4A853] border border-[#D4A853]/20 text-xs">
                 {overview.openDeals} Open Deals
               </Badge>
+              <ExportBtn onClick={(e) => { e.stopPropagation(); exportToExcel(recentDeals.map((d: any) => ({ ...d, amount: d.amount > 0 ? d.amount : '' })), [{ key: 'dealName', label: 'Deal' }, { key: 'accountName', label: 'Account' }, { key: 'stage', label: 'Stage' }, { key: 'amount', label: 'Value' }, { key: 'ownerName', label: 'Owner' }, { key: 'closingDate', label: 'Closing Date' }, { key: 'daysUntilClose', label: 'Days Until Close' }], 'Deals_Pipeline', 'Deals'); }} />
             </div>
           </div>
         </CardHeader>
@@ -241,6 +256,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
             <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs">
               {dealsByOwner.length} Reps
             </Badge>
+            <ExportBtn onClick={(e) => { e.stopPropagation(); exportToExcel(dealsByOwner, [{ key: 'ownerName', label: 'Sales Rep' }, { key: 'totalDeals', label: 'Total Deals' }, { key: 'openDeals', label: 'Open' }, { key: 'closedWon', label: 'Won' }, { key: 'totalValue', label: 'Pipeline Value' }, { key: 'wonValue', label: 'Won Revenue' }, { key: 'winRate', label: 'Win Rate %' }], 'Deal_Performance', 'Performance'); }} />
           </div>
         </CardHeader>
         {ownerExpanded && <CardContent>
@@ -300,6 +316,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
             <Badge variant="secondary" className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs">
               {overview.newLeadsThisPeriod} New Leads
             </Badge>
+            <ExportBtn onClick={(e) => { e.stopPropagation(); const rows = [...leadsBySource.map((s: any) => ({ type: 'Source', name: s.source, count: s.count })), ...leadsByStatus.map((s: any) => ({ type: 'Status', name: s.status, count: s.count }))]; exportToExcel(rows, [{ key: 'type', label: 'Category' }, { key: 'name', label: 'Name' }, { key: 'count', label: 'Count' }], 'Leads_Breakdown', 'Leads'); }} />
           </div>
         </CardHeader>
         {leadsExpanded && <CardContent>
@@ -356,6 +373,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
             <Badge variant="secondary" className="bg-purple-500/10 text-purple-400 border border-purple-500/20 text-xs">
               {overview.totalCalls} Calls
             </Badge>
+            <ExportBtn onClick={(e) => { e.stopPropagation(); exportToExcel(callsByOwner, [{ key: 'ownerName', label: 'Sales Rep' }, { key: 'totalCalls', label: 'Total Calls' }, { key: 'inbound', label: 'Inbound' }, { key: 'outbound', label: 'Outbound' }], 'Calls_Logged', 'Calls'); }} />
           </div>
         </CardHeader>
         {callsExpanded && <CardContent>
@@ -403,6 +421,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
             <Badge variant="secondary" className="bg-[#D4A853]/10 text-[#D4A853] border border-[#D4A853]/20 text-xs">
               {clients.length} Total
             </Badge>
+            <ExportBtn onClick={(e) => { e.stopPropagation(); exportToExcel(clients.map((c: any) => ({ ...c, createdTime: c.createdTime ? new Date(c.createdTime).toLocaleDateString('en-US') : '' })), [{ key: 'accountName', label: 'Client Name' }, { key: 'industry', label: 'Industry' }, { key: 'phone', label: 'Phone' }, { key: 'website', label: 'Website' }, { key: 'owner', label: 'Owner' }, { key: 'createdTime', label: 'Created Date' }], 'Clients', 'Clients'); }} />
           </div>
         </CardHeader>
         {clientsExpanded && <CardContent>
@@ -481,6 +500,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
               <Badge variant="secondary" className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs">
                 {signDocuments.length} Documents
               </Badge>
+              <ExportBtn onClick={(e) => { e.stopPropagation(); const filtered = signFilter === 'all' ? signDocuments : signDocuments.filter((d: any) => d.status === signFilter); exportToExcel(filtered.map((d: any) => ({ ...d, recipients: d.recipients?.map((r: any) => `${r.name} (${r.status?.toLowerCase() || 'pending'})`).join(', ') || '', createdTime: d.createdTime ? new Date(d.createdTime).toLocaleDateString('en-US') : '' })), [{ key: 'documentName', label: 'Document' }, { key: 'status', label: 'Status' }, { key: 'recipients', label: 'Recipients' }, { key: 'owner', label: 'Owner' }, { key: 'createdTime', label: 'Created Date' }], 'Zoho_Sign_Documents', 'Documents'); }} />
             </div>
           </div>
         </CardHeader>
