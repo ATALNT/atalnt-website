@@ -8,7 +8,7 @@ import { DashboardCard } from './DashboardCard';
 import { fetchSalesDashboard } from '@/lib/dashboard-api';
 import {
   TrendingUp, Users, DollarSign, Phone, Target, ChevronDown, ChevronUp,
-  AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Briefcase, Building2
+  AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Briefcase, Building2, FileSignature
 } from 'lucide-react';
 
 interface SalesDashboardProps {
@@ -56,6 +56,9 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
   const [leadsExpanded, setLeadsExpanded] = useState(true);
   const [clientsExpanded, setClientsExpanded] = useState(true);
   const [clientsSort, setClientsSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'createdTime', dir: 'desc' });
+  const [signExpanded, setSignExpanded] = useState(true);
+  const [signSort, setSignSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'createdTime', dir: 'desc' });
+  const [signFilter, setSignFilter] = useState<string>('all');
   const [pipelineSort, setPipelineSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'amount', dir: 'desc' });
   const [ownerSort, setOwnerSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalDeals', dir: 'desc' });
 
@@ -81,7 +84,7 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
   const d = salesQuery.data?.data;
   if (!d) return null;
 
-  const { overview, leadsBySource, leadsByStatus, dealsByStage, dealsByOwner, recentDeals, callsByOwner, clients = [] } = d;
+  const { overview, leadsBySource, leadsByStatus, dealsByStage, dealsByOwner, recentDeals, callsByOwner, clients = [], signDocuments = [] } = d;
   const periodLabel = datePreset.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 
   function SortHead({ col, currentSort, setSort }: { col: { key: string; label: string; align?: string }; currentSort: { key: string; dir: 'asc' | 'desc' }; setSort: (s: { key: string; dir: 'asc' | 'desc' }) => void }) {
@@ -447,6 +450,125 @@ export function SalesDashboard({ token, datePreset, dateRange }: SalesDashboardP
             </div>
           ) : (
             <p className="text-center text-white/30 py-8">No client accounts found</p>
+          )}
+        </CardContent>}
+      </Card>
+
+      {/* ============================================ */}
+      {/* ZOHO SIGN DOCUMENTS                          */}
+      {/* ============================================ */}
+      <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-indigo-500/30 to-transparent" />
+        <CardHeader className="pb-2 cursor-pointer select-none" onClick={() => setSignExpanded((v) => !v)}>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+              {signExpanded ? <ChevronUp className="h-3.5 w-3.5 text-indigo-400/60" /> : <ChevronDown className="h-3.5 w-3.5 text-indigo-400/60" />}
+              <FileSignature className="h-3.5 w-3.5 text-indigo-400/60" />
+              Zoho Sign Documents
+            </CardTitle>
+            <div className="flex items-center gap-3">
+              {(() => {
+                const counts: Record<string, number> = {};
+                signDocuments.forEach((d: any) => { counts[d.status] = (counts[d.status] || 0) + 1; });
+                return (
+                  <span className="text-[10px] text-white/40 flex items-center gap-2">
+                    {counts['completed'] && <span><span className="text-emerald-400 font-semibold">{counts['completed']}</span> completed</span>}
+                    {counts['inprogress'] && <span><span className="text-blue-400 font-semibold">{counts['inprogress']}</span> pending</span>}
+                    {counts['expired'] && <span><span className="text-amber-400 font-semibold">{counts['expired']}</span> expired</span>}
+                  </span>
+                );
+              })()}
+              <Badge variant="secondary" className="bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-xs">
+                {signDocuments.length} Documents
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+        {signExpanded && <CardContent>
+          {/* Status filter tabs */}
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {['all', 'completed', 'inprogress', 'expired', 'recalled', 'declined'].map((f) => {
+              const count = f === 'all' ? signDocuments.length : signDocuments.filter((d: any) => d.status === f).length;
+              if (f !== 'all' && count === 0) return null;
+              const label = f === 'all' ? 'All' : f === 'inprogress' ? 'Pending' : f.charAt(0).toUpperCase() + f.slice(1);
+              return (
+                <button
+                  key={f}
+                  onClick={(e) => { e.stopPropagation(); setSignFilter(f); }}
+                  className={`text-[10px] px-2.5 py-1 rounded-md border transition-colors ${signFilter === f ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' : 'bg-white/[0.02] text-white/40 border-white/[0.06] hover:bg-white/[0.04]'}`}
+                >
+                  {label} <span className="font-semibold ml-0.5">{count}</span>
+                </button>
+              );
+            })}
+          </div>
+          {signDocuments.length > 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/[0.04] hover:bg-transparent">
+                    <SortHead col={{ key: 'documentName', label: 'Document', align: 'text-left' }} currentSort={signSort} setSort={setSignSort} />
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Status</TableHead>
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Recipients</TableHead>
+                    <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Owner</TableHead>
+                    <SortHead col={{ key: 'createdTime', label: 'Created' }} currentSort={signSort} setSort={setSignSort} />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...signDocuments]
+                    .filter((d: any) => signFilter === 'all' || d.status === signFilter)
+                    .sort((a: any, b: any) => {
+                      const k = signSort.key;
+                      const dir = signSort.dir === 'asc' ? 1 : -1;
+                      if (k === 'createdTime') return (new Date(a[k]).getTime() - new Date(b[k]).getTime()) * dir;
+                      return String(a[k] || '').localeCompare(String(b[k] || '')) * dir;
+                    })
+                    .map((doc: any, i: number) => {
+                      const statusConfig: Record<string, { color: string; label: string }> = {
+                        'completed': { color: '#10b981', label: 'Completed' },
+                        'inprogress': { color: '#3b82f6', label: 'Pending' },
+                        'expired': { color: '#f59e0b', label: 'Expired' },
+                        'recalled': { color: '#6b7280', label: 'Recalled' },
+                        'declined': { color: '#ef4444', label: 'Declined' },
+                      };
+                      const sc = statusConfig[doc.status] || { color: '#6b7280', label: doc.status };
+                      const dt = doc.createdTime ? new Date(doc.createdTime) : null;
+                      const formatted = dt
+                        ? dt.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+                        : '—';
+                      return (
+                        <TableRow key={i} className="border-white/[0.03] hover:bg-white/[0.02]">
+                          <TableCell className="font-medium text-white/80 max-w-[300px] truncate">{doc.documentName}</TableCell>
+                          <TableCell>
+                            <span className="text-[10px] px-2 py-0.5 rounded font-medium whitespace-nowrap"
+                              style={{ backgroundColor: `${sc.color}20`, color: sc.color }}>
+                              {sc.label}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-white/50 text-xs max-w-[200px]">
+                            {doc.recipients?.length > 0
+                              ? doc.recipients.map((r: any, ri: number) => (
+                                <span key={ri} className="block leading-relaxed">
+                                  <span className="text-white/60">{r.name}</span>
+                                  {r.status && (
+                                    <span className={`ml-1 text-[9px] ${r.status === 'SIGNED' ? 'text-emerald-400' : r.status === 'VIEWED' ? 'text-blue-400' : 'text-white/30'}`}>
+                                      ({r.status.toLowerCase()})
+                                    </span>
+                                  )}
+                                </span>
+                              ))
+                              : '—'}
+                          </TableCell>
+                          <TableCell className="text-white/40 text-xs whitespace-nowrap">{doc.owner}</TableCell>
+                          <TableCell className="text-right text-white/40 text-xs whitespace-nowrap">{formatted}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="text-center text-white/30 py-8">No Zoho Sign documents found</p>
           )}
         </CardContent>}
       </Card>
