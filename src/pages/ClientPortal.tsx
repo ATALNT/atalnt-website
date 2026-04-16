@@ -158,6 +158,9 @@ function ClientLogin({ clientName, onLogin }: { clientName: string; onLogin: (pw
 
 // ─── Dashboard Component ─────────────────────
 function ClientDashboardContent({ token, clientName, onLogout }: { token: string; clientName: string; onLogout: () => void }) {
+  const [rolesExpanded, setRolesExpanded] = useState(true);
+  const [rolesSearch, setRolesSearch] = useState('');
+  const [rolesSort, setRolesSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalSubmissions', dir: 'desc' });
   const [candidatesExpanded, setCandidatesExpanded] = useState(true);
   const [candidateSearch, setCandidateSearch] = useState('');
   const [candidateSort, setCandidateSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'submittedDate', dir: 'desc' });
@@ -187,14 +190,30 @@ function ClientDashboardContent({ token, clientName, onLogout }: { token: string
   const d = query.data?.data;
   if (!d) return null;
 
-  const { candidates = [], jobs = [], statusCounts = {}, totalCandidates = 0, totalJobs = 0 } = d;
+  const { candidates = [], statusCounts = {}, totalCandidates = 0, activeRoles = 0, rolesSummary = [] } = d;
 
+  // Roles filtering/sorting
+  const filteredRoles = rolesSummary
+    .filter((r: any) => {
+      if (!rolesSearch) return true;
+      const q = rolesSearch.toLowerCase();
+      return [r.jobTitle, r.city, r.state].some((v: string) => (v || '').toLowerCase().includes(q));
+    })
+    .sort((a: any, b: any) => {
+      const k = rolesSort.key;
+      const dir = rolesSort.dir === 'asc' ? 1 : -1;
+      if (['totalSubmissions', 'inInterview', 'hired', 'numberOfPositions'].includes(k))
+        return ((a[k] || 0) - (b[k] || 0)) * dir;
+      return String(a[k] || '').localeCompare(String(b[k] || '')) * dir;
+    });
+
+  // Candidates filtering/sorting
   const filteredCandidates = candidates
     .filter((c: any) => (statusFilter === 'all' || c.status === statusFilter))
     .filter((c: any) => {
       if (!candidateSearch) return true;
       const q = candidateSearch.toLowerCase();
-      return [c.candidateName, c.jobTitle, c.status, c.city, c.state].some(v => (v || '').toLowerCase().includes(q));
+      return [c.candidateName, c.jobTitle, c.status, c.city, c.state].some((v: string) => (v || '').toLowerCase().includes(q));
     })
     .sort((a: any, b: any) => {
       const k = candidateSort.key;
@@ -203,7 +222,23 @@ function ClientDashboardContent({ token, clientName, onLogout }: { token: string
       return String(a[k] || '').localeCompare(String(b[k] || '')) * dir;
     });
 
-  function SortHead({ col }: { col: { key: string; label: string; align?: string } }) {
+  function RolesSortHead({ col }: { col: { key: string; label: string; align?: string } }) {
+    return (
+      <TableHead
+        className={`text-white/25 text-[10px] uppercase tracking-widest cursor-pointer hover:text-white/50 select-none transition-colors ${col.align || ''}`}
+        onClick={() => setRolesSort(prev => ({ key: col.key, dir: prev.key === col.key && prev.dir === 'asc' ? 'desc' : 'asc' }))}
+      >
+        <span className="inline-flex items-center gap-1">
+          {col.label}
+          {rolesSort.key === col.key
+            ? rolesSort.dir === 'asc' ? <ArrowUp className="h-3 w-3 text-[#D4A853]" /> : <ArrowDown className="h-3 w-3 text-[#D4A853]" />
+            : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+        </span>
+      </TableHead>
+    );
+  }
+
+  function CandSortHead({ col }: { col: { key: string; label: string; align?: string } }) {
     return (
       <TableHead
         className={`text-white/25 text-[10px] uppercase tracking-widest cursor-pointer hover:text-white/50 select-none transition-colors ${col.align || ''}`}
@@ -218,6 +253,10 @@ function ClientDashboardContent({ token, clientName, onLogout }: { token: string
       </TableHead>
     );
   }
+
+  // Totals for KPIs
+  const totalInInterview = (statusCounts['Interview Scheduled'] || 0) + (statusCounts['Interview in Progress'] || 0) + (statusCounts['2nd Interview'] || 0) + (statusCounts['3rd Interview'] || 0);
+  const totalHired = statusCounts['Hired'] || 0;
 
   return (
     <div className="min-h-screen bg-[#0a0b0f] relative">
@@ -245,33 +284,124 @@ function ClientDashboardContent({ token, clientName, onLogout }: { token: string
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <Card className="border-white/[0.06] bg-white/[0.02]">
             <CardContent className="p-4">
-              <p className="text-[10px] text-white/25 uppercase tracking-widest">Total Candidates</p>
+              <p className="text-[10px] text-white/25 uppercase tracking-widest">Total Submissions</p>
               <p className="text-2xl font-bold text-white mt-1">{totalCandidates}</p>
             </CardContent>
           </Card>
           <Card className="border-white/[0.06] bg-white/[0.02]">
             <CardContent className="p-4">
-              <p className="text-[10px] text-white/25 uppercase tracking-widest">Open Positions</p>
-              <p className="text-2xl font-bold text-[#D4A853] mt-1">{totalJobs}</p>
+              <p className="text-[10px] text-white/25 uppercase tracking-widest">Active Roles</p>
+              <p className="text-2xl font-bold text-[#D4A853] mt-1">{activeRoles}</p>
             </CardContent>
           </Card>
           <Card className="border-white/[0.06] bg-white/[0.02]">
             <CardContent className="p-4">
               <p className="text-[10px] text-white/25 uppercase tracking-widest">In Interview</p>
-              <p className="text-2xl font-bold text-purple-400 mt-1">{(statusCounts['Interview Scheduled'] || 0) + (statusCounts['Interview in Progress'] || 0)}</p>
+              <p className="text-2xl font-bold text-purple-400 mt-1">{totalInInterview}</p>
             </CardContent>
           </Card>
           <Card className="border-white/[0.06] bg-white/[0.02]">
             <CardContent className="p-4">
               <p className="text-[10px] text-white/25 uppercase tracking-widest">Hired</p>
-              <p className="text-2xl font-bold text-emerald-400 mt-1">{statusCounts['Hired'] || 0}</p>
+              <p className="text-2xl font-bold text-emerald-400 mt-1">{totalHired}</p>
             </CardContent>
           </Card>
         </div>
 
+        {/* Roles Summary */}
+        <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden mb-4">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D4A853]/30 to-transparent" />
+          <CardHeader className="pb-2 cursor-pointer select-none" onClick={() => setRolesExpanded(v => !v)}>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+                {rolesExpanded ? <ChevronUp className="h-3.5 w-3.5 text-[#D4A853]/60" /> : <ChevronDown className="h-3.5 w-3.5 text-[#D4A853]/60" />}
+                <Briefcase className="h-3.5 w-3.5 text-[#D4A853]/60" />
+                Roles Summary
+              </CardTitle>
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="bg-[#D4A853]/10 text-[#D4A853] border border-[#D4A853]/20 text-xs">
+                  {filteredRoles.length} Active Roles
+                </Badge>
+                <button onClick={(e) => {
+                  e.stopPropagation();
+                  exportToExcel(
+                    filteredRoles.map((r: any) => ({
+                      ...r,
+                      location: [r.city, r.state].filter(Boolean).join(', ') || '—',
+                      createdDate: r.createdDate ? new Date(r.createdDate).toLocaleDateString('en-US') : '',
+                    })),
+                    [
+                      { key: 'jobTitle', label: 'Role' }, { key: 'location', label: 'Location' },
+                      { key: 'numberOfPositions', label: 'Positions' }, { key: 'totalSubmissions', label: 'Submissions' },
+                      { key: 'inInterview', label: 'In Interview' }, { key: 'hired', label: 'Hired' },
+                      { key: 'createdDate', label: 'Created' },
+                    ],
+                    `${clientName}_Roles`, 'Roles'
+                  );
+                }} className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded px-2 py-1 transition-colors" title="Export to Excel">
+                  <Download className="h-3 w-3" />Excel
+                </button>
+              </div>
+            </div>
+          </CardHeader>
+          {rolesExpanded && (
+            <CardContent>
+              {rolesSummary.length > 0 ? (
+                <>
+                  <SearchInput value={rolesSearch} onChange={setRolesSearch} placeholder="Search roles, locations..." />
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-white/[0.04] hover:bg-transparent">
+                          <RolesSortHead col={{ key: 'jobTitle', label: 'Role' }} />
+                          <RolesSortHead col={{ key: 'city', label: 'Location' }} />
+                          <RolesSortHead col={{ key: 'numberOfPositions', label: 'Positions' }} />
+                          <RolesSortHead col={{ key: 'totalSubmissions', label: 'Submissions' }} />
+                          <RolesSortHead col={{ key: 'inInterview', label: 'Interview' }} />
+                          <RolesSortHead col={{ key: 'hired', label: 'Hired' }} />
+                          <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredRoles.map((r: any, i: number) => {
+                          const location = [r.city, r.state].filter(Boolean).join(', ') || '—';
+                          return (
+                            <TableRow key={i} className="border-white/[0.03] hover:bg-white/[0.02]">
+                              <TableCell className="font-medium text-white/80">{r.jobTitle}</TableCell>
+                              <TableCell className="text-white/40 text-xs whitespace-nowrap">{location}</TableCell>
+                              <TableCell className="text-white/50 text-center">{r.numberOfPositions}</TableCell>
+                              <TableCell className="text-center">
+                                <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-blue-500/10 text-blue-400">{r.totalSubmissions}</span>
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {r.inInterview > 0 ? <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-purple-500/10 text-purple-400">{r.inInterview}</span> : <span className="text-white/15">—</span>}
+                              </TableCell>
+                              <TableCell className="text-center">
+                                {r.hired > 0 ? <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-emerald-500/10 text-emerald-400">{r.hired}</span> : <span className="text-white/15">—</span>}
+                              </TableCell>
+                              <TableCell>
+                                <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-[#D4A853]/10 text-[#D4A853] whitespace-nowrap">Active</span>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <Briefcase className="h-10 w-10 text-white/10 mx-auto mb-3" />
+                  <p className="text-white/30 text-sm">No active roles</p>
+                </div>
+              )}
+            </CardContent>
+          )}
+        </Card>
+
         {/* Status breakdown */}
         {Object.keys(statusCounts).length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-6">
+          <div className="flex flex-wrap gap-1.5 mb-4">
             <button
               onClick={() => setStatusFilter('all')}
               className={`text-[10px] px-2.5 py-1 rounded-md border transition-colors ${statusFilter === 'all' ? 'bg-[#D4A853]/20 text-[#D4A853] border-[#D4A853]/30' : 'bg-white/[0.02] text-white/40 border-white/[0.06] hover:bg-white/[0.04]'}`}
@@ -294,7 +424,7 @@ function ClientDashboardContent({ token, clientName, onLogout }: { token: string
               <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
                 {candidatesExpanded ? <ChevronUp className="h-3.5 w-3.5 text-[#D4A853]/60" /> : <ChevronDown className="h-3.5 w-3.5 text-[#D4A853]/60" />}
                 <Users className="h-3.5 w-3.5 text-[#D4A853]/60" />
-                Candidates Submitted
+                All Submissions
               </CardTitle>
               <div className="flex items-center gap-3">
                 <Badge variant="secondary" className="bg-[#D4A853]/10 text-[#D4A853] border border-[#D4A853]/20 text-xs">
@@ -305,7 +435,7 @@ function ClientDashboardContent({ token, clientName, onLogout }: { token: string
                   exportToExcel(
                     filteredCandidates.map((c: any) => ({ ...c, submittedDate: c.submittedDate ? new Date(c.submittedDate).toLocaleDateString('en-US') : '', lastUpdated: c.lastUpdated ? new Date(c.lastUpdated).toLocaleDateString('en-US') : '' })),
                     [{ key: 'candidateName', label: 'Candidate' }, { key: 'jobTitle', label: 'Position' }, { key: 'status', label: 'Status' }, { key: 'city', label: 'City' }, { key: 'state', label: 'State' }, { key: 'submittedDate', label: 'Submitted' }, { key: 'lastUpdated', label: 'Last Updated' }],
-                    `${clientName}_Candidates`, 'Candidates'
+                    `${clientName}_Submissions`, 'Submissions'
                   );
                 }} className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded px-2 py-1 transition-colors" title="Export to Excel">
                   <Download className="h-3 w-3" />Excel
@@ -322,12 +452,12 @@ function ClientDashboardContent({ token, clientName, onLogout }: { token: string
                     <Table>
                       <TableHeader>
                         <TableRow className="border-white/[0.04] hover:bg-transparent">
-                          <SortHead col={{ key: 'candidateName', label: 'Candidate' }} />
-                          <SortHead col={{ key: 'jobTitle', label: 'Position' }} />
+                          <CandSortHead col={{ key: 'candidateName', label: 'Candidate' }} />
+                          <CandSortHead col={{ key: 'jobTitle', label: 'Position' }} />
                           <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Status</TableHead>
-                          <SortHead col={{ key: 'city', label: 'Location' }} />
-                          <SortHead col={{ key: 'submittedDate', label: 'Submitted' }} />
-                          <SortHead col={{ key: 'lastUpdated', label: 'Last Updated' }} />
+                          <CandSortHead col={{ key: 'city', label: 'Location' }} />
+                          <CandSortHead col={{ key: 'submittedDate', label: 'Submitted' }} />
+                          <CandSortHead col={{ key: 'lastUpdated', label: 'Last Updated' }} />
                         </TableRow>
                       </TableHeader>
                       <TableBody>

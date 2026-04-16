@@ -1,6 +1,6 @@
 // ============================================
 // /api/client/portal - Client Portal (Login + Data)
-// POST = login, GET = fetch candidates
+// POST = login, GET = fetch all roles & submissions
 // ============================================
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -8,8 +8,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 interface TokenResponse { access_token: string; token_type: string; expires_in: number; api_domain: string; }
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
-const CLIENT_CONFIG: Record<string, { passwordEnv: string; secretEnv: string; matchTerms: string[] }> = {
-  balfour: { passwordEnv: 'BALFOUR_PASSWORD', secretEnv: 'BALFOUR_SECRET', matchTerms: ['balfour'] },
+const CLIENT_CONFIG: Record<string, { passwordEnv: string; secretEnv: string; displayName: string }> = {
+  balfour: { passwordEnv: 'BALFOUR_PASSWORD', secretEnv: 'BALFOUR_SECRET', displayName: 'Balfour & Co' },
 };
 
 function verifyClientToken(req: VercelRequest): string | null {
@@ -62,13 +62,6 @@ async function fetchModule(accessToken: string, module: string, fields: string):
   return all;
 }
 
-function matchesClient(record: any, matchTerms: string[]): boolean {
-  const jobName = (record.Job_Opening_Name || '').toLowerCase();
-  const clientName = zohoStr(record.Client_Name, '').toLowerCase();
-  const accountName = zohoStr(record.Account_Name, '').toLowerCase();
-  return matchTerms.some(term => jobName.includes(term) || clientName.includes(term) || accountName.includes(term));
-}
-
 // ─── Login handler ───────────────────────────
 async function handleLogin(req: VercelRequest, res: VercelResponse) {
   let password: string | undefined;
@@ -104,40 +97,22 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
 
   const [allApplications, allJobs] = await Promise.all([
     fetchModule(accessToken, 'Applications', 'Full_Name,First_Name,Last_Name,Application_Status,Job_Opening_Name,Client_Name,Created_Time,Updated_On,City,State'),
-    fetchModule(accessToken, 'Job_Openings', 'Job_Opening_Name,Client_Name,Account_Name,Job_Opening_Status,City,State,Created_Time'),
+    fetchModule(accessToken, 'Job_Openings', 'Job_Opening_Name,Client_Name,Account_Name,Job_Opening_Status,City,State,Created_Time,Number_of_Positions'),
   ]);
 
-  // Debug: return all unique client/account names and job names when ?debug=1
-  if (req.query.debug === '1') {
-    const clientNames = new Set<string>();
-    const accountNames = new Set<string>();
-    const jobNames: string[] = [];
-    allJobs.forEach(j => {
-      const cn = zohoStr(j.Client_Name, '');
-      const an = zohoStr(j.Account_Name, '');
-      if (cn) clientNames.add(cn);
-      if (an) accountNames.add(an);
-      if (j.Job_Opening_Name) jobNames.push(j.Job_Opening_Name);
-    });
-    return res.status(200).json({ totalJobs: allJobs.length, totalApps: allApplications.length, clientNames: [...clientNames].sort(), accountNames: [...accountNames].sort(), jobNames: jobNames.sort() });
-  }
-
-  const clientJobs = allJobs.filter(j => matchesClient(j, config.matchTerms));
-  const clientJobNames = new Set(clientJobs.map(j => j.Job_Opening_Name));
-
-  const clientApps = allApplications.filter(a =>
-    clientJobNames.has(a.Job_Opening_Name) || matchesClient(a, config.matchTerms)
-  );
-
+  // Status mapping: internal Zoho statuses → client-friendly labels
   const statusMap: Record<string, string> = {
     'Associated': 'Submitted', 'New': 'Submitted', 'In-Review': 'Under Review',
     'Submitted-to-Client': 'Submitted to You', 'Interview-Scheduled': 'Interview Scheduled',
+    '2nd Interview-Scheduled': '2nd Interview', '3rd Interview-Scheduled': '3rd Interview',
     'Interview-in-Progress': 'Interview in Progress', 'To-be-Offered': 'Offer Pending',
     'Offer-Accepted': 'Offer Accepted', 'Hired': 'Hired', 'Rejected': 'Not Selected',
     'Rejected-by-Client': 'Not Selected', 'On Hold': 'On Hold', 'Withdrawn': 'Withdrawn',
+    'Qualified': 'Qualified', 'Unqualified': 'Not Selected',
   };
 
-  const candidates = clientApps.map(a => {
+  // Build candidates from ALL applications
+  const candidates = allApplications.map(a => {
     const status = a.Application_Status || 'New';
     return {
       candidateName: a.Full_Name || 'Unknown',
@@ -156,24 +131,61 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
   const statusCounts: Record<string, number> = {};
   candidates.forEach(c => { statusCounts[c.status] = (statusCounts[c.status] || 0) + 1; });
 
-  const jobs = clientJobs.map(j => ({
+  // Build jobs summary from ALL job openings
+  const jobs = allJobs.map(j => ({
     jobTitle: j.Job_Opening_Name || 'Unknown',
     status: j.Job_Opening_Status || 'Open',
     city: zohoStr(j.City, ''),
     state: zohoStr(j.State, ''),
+    numberOfPositions: j.Number_of_Positions || 1,
     createdDate: j.Created_Time || '',
-    candidateCount: clientApps.filter(a => a.Job_Opening_Name === j.Job_Opening_Name).length,
+    candidateCount: allApplications.filter(a => a.Job_Opening_Name === j.Job_Opening_Name).length,
   }));
+
+  // Roles summary: group by job title, aggregate stats
+  const roleMap: Record<string, {
+    jobTitle: string; status: string; city: string; state: string; numberOfPositions: number;
+    createdDate: string; totalSubmissions: number; inInterview: number; hired: number; rejected: number; active: number;
+  }> = {};
+
+  for (const j of jobs) {
+    const key = j.jobTitle;
+    if (!roleMap[key]) {
+      roleMap[key] = {
+        jobTitle: j.jobTitle, status: j.status, city: j.city, state: j.state,
+        numberOfPositions: j.numberOfPositions, createdDate: j.createdDate,
+        totalSubmissions: 0, inInterview: 0, hired: 0, rejected: 0, active: 0,
+      };
+    }
+    roleMap[key].totalSubmissions += j.candidateCount;
+  }
+
+  // Enrich roles with candidate stage counts
+  for (const c of candidates) {
+    const role = roleMap[c.jobTitle];
+    if (!role) continue;
+    const raw = (c.rawStatus || '').toLowerCase();
+    if (raw.includes('interview')) role.inInterview++;
+    else if (raw === 'hired') role.hired++;
+    else if (raw.includes('reject') || raw === 'unqualified') role.rejected++;
+    else if (!['withdrawn', 'on hold'].includes(raw)) role.active++;
+  }
+
+  const rolesSummary = Object.values(roleMap)
+    .filter(r => r.status.toLowerCase() === 'in-progress')
+    .sort((a, b) => b.totalSubmissions - a.totalSubmissions);
 
   return res.status(200).json({
     success: true,
     data: {
-      clientName: clientSlug.charAt(0).toUpperCase() + clientSlug.slice(1),
+      clientName: config.displayName,
       totalCandidates: candidates.length,
       totalJobs: jobs.length,
+      activeRoles: rolesSummary.length,
       statusCounts,
       candidates,
       jobs,
+      rolesSummary,
     },
     timestamp: new Date().toISOString(),
   });
