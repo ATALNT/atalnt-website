@@ -107,6 +107,19 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
     fetchModule(accessToken, 'Job_Openings', 'Job_Opening_Name,Client_Name,Account_Name,Job_Opening_Status,City,State,Created_Time'),
   ]);
 
+  // Debug: return all unique client/account names when ?debug=1
+  if (req.query.debug === '1') {
+    const clientNames = new Set<string>();
+    const accountNames = new Set<string>();
+    allJobs.forEach(j => {
+      const cn = zohoStr(j.Client_Name, '');
+      const an = zohoStr(j.Account_Name, '');
+      if (cn) clientNames.add(cn);
+      if (an) accountNames.add(an);
+    });
+    return res.status(200).json({ totalJobs: allJobs.length, totalApps: allApplications.length, clientNames: [...clientNames].sort(), accountNames: [...accountNames].sort() });
+  }
+
   const clientJobs = allJobs.filter(j => matchesClient(j, config.matchTerms));
   const clientJobNames = new Set(clientJobs.map(j => j.Job_Opening_Name));
 
