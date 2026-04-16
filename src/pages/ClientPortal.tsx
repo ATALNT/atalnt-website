@@ -29,7 +29,7 @@ function useClientAuth(clientSlug: string) {
 
   const login = useCallback(async (password: string): Promise<boolean> => {
     try {
-      const response = await fetch('/api/client/login', {
+      const response = await fetch('/api/client/portal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password, client: clientSlug }),
@@ -60,7 +60,7 @@ function useClientAuth(clientSlug: string) {
 
 // ─── API ─────────────────────────────────────
 async function fetchClientData(token: string) {
-  const res = await fetch('/api/client/candidates', {
+  const res = await fetch('/api/client/portal', {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`API error: ${res.status}`);
