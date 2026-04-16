@@ -15,6 +15,7 @@ import NotFound from "./pages/NotFound";
 import Dashboard from "./pages/Dashboard";
 import ActiveCandidates from "./pages/ActiveCandidates";
 import InstantlyDashboard from "./pages/InstantlyDashboard";
+import ClientPortal from "./pages/ClientPortal";
 
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
           <Route path="/db" element={<Dashboard />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/instantly" element={<InstantlyDashboard />} />
+          <Route path="/balfour" element={<ClientPortal clientSlug="balfour" clientDisplayName="Balfour Beatty" />} />
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
