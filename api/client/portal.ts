@@ -8,8 +8,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 interface TokenResponse { access_token: string; token_type: string; expires_in: number; api_domain: string; }
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
-const CLIENT_CONFIG: Record<string, { passwordEnv: string; secretEnv: string; displayName: string }> = {
-  balfour: { passwordEnv: 'BALFOUR_PASSWORD', secretEnv: 'BALFOUR_SECRET', displayName: 'Balfour & Co' },
+const CLIENT_CONFIG: Record<string, { passwordEnv: string; secretEnv: string; displayName: string; jobFilter: (job: any) => boolean }> = {
+  balfour: {
+    passwordEnv: 'BALFOUR_PASSWORD', secretEnv: 'BALFOUR_SECRET', displayName: 'Balfour & Co',
+    jobFilter: (job: any) => (job.Priority1 || '').toLowerCase() === 'high',
+  },
 };
 
 function verifyClientToken(req: VercelRequest): string | null {
@@ -97,8 +100,15 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
 
   const [allApplications, allJobs] = await Promise.all([
     fetchModule(accessToken, 'Applications', 'Full_Name,First_Name,Last_Name,Application_Status,Job_Opening_Name,Client_Name,Created_Time,Updated_On,City,State'),
-    fetchModule(accessToken, 'Job_Openings', 'Job_Opening_Name,Client_Name,Account_Name,Job_Opening_Status,City,State,Created_Time,Number_of_Positions'),
+    fetchModule(accessToken, 'Job_Openings', 'Job_Opening_Name,Client_Name,Account_Name,Job_Opening_Status,City,State,Created_Time,Number_of_Positions,Priority1'),
   ]);
+
+  // Filter jobs by client-specific criteria
+  const clientJobs = allJobs.filter(config.jobFilter);
+  const clientJobNames = new Set(clientJobs.map(j => j.Job_Opening_Name));
+
+  // Filter applications to only those for client jobs
+  const clientApplications = allApplications.filter(a => clientJobNames.has(a.Job_Opening_Name));
 
   // Status mapping: internal Zoho statuses → client-friendly labels
   const statusMap: Record<string, string> = {
@@ -111,8 +121,8 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
     'Qualified': 'Qualified', 'Unqualified': 'Not Selected',
   };
 
-  // Build candidates from ALL applications
-  const candidates = allApplications.map(a => {
+  // Build candidates from client applications only
+  const candidates = clientApplications.map(a => {
     const status = a.Application_Status || 'New';
     return {
       candidateName: a.Full_Name || 'Unknown',
@@ -131,15 +141,15 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
   const statusCounts: Record<string, number> = {};
   candidates.forEach(c => { statusCounts[c.status] = (statusCounts[c.status] || 0) + 1; });
 
-  // Build jobs summary from ALL job openings
-  const jobs = allJobs.map(j => ({
+  // Build jobs summary from client job openings only
+  const jobs = clientJobs.map(j => ({
     jobTitle: j.Job_Opening_Name || 'Unknown',
     status: j.Job_Opening_Status || 'Open',
     city: zohoStr(j.City, ''),
     state: zohoStr(j.State, ''),
     numberOfPositions: j.Number_of_Positions || 1,
     createdDate: j.Created_Time || '',
-    candidateCount: allApplications.filter(a => a.Job_Opening_Name === j.Job_Opening_Name).length,
+    candidateCount: clientApplications.filter(a => a.Job_Opening_Name === j.Job_Opening_Name).length,
   }));
 
   // Roles summary: group by job title, aggregate stats
