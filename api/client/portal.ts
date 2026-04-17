@@ -103,6 +103,14 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
     fetchModule(accessToken, 'Job_Openings', 'Job_Opening_Name,Client_Name,Account_Name,Job_Opening_Status,City,State,Created_Time,Number_of_Positions,Priority1'),
   ]);
 
+  // Debug: temporarily return priority values to inspect
+  if (req.query.debug === '1') {
+    const priorities = new Set<string>();
+    allJobs.forEach(j => { const p = zohoStr(j.Priority1, ''); if (p) priorities.add(p); });
+    const highJobs = allJobs.filter(j => (j.Priority1 || '').toString().toLowerCase().includes('high'));
+    return res.status(200).json({ totalJobs: allJobs.length, uniquePriorities: [...priorities].sort(), highJobCount: highJobs.length, sampleJobs: allJobs.slice(0, 5).map(j => ({ name: j.Job_Opening_Name, priority: j.Priority1 })) });
+  }
+
   // Filter jobs by client-specific criteria
   const clientJobs = allJobs.filter(config.jobFilter);
   const clientJobNames = new Set(clientJobs.map(j => j.Job_Opening_Name));
