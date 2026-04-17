@@ -8,10 +8,10 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 interface TokenResponse { access_token: string; token_type: string; expires_in: number; api_domain: string; }
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
-const CLIENT_CONFIG: Record<string, { passwordEnv: string; secretEnv: string; displayName: string; jobFilter: (job: any) => boolean }> = {
+const CLIENT_CONFIG: Record<string, { passwordEnv: string; secretEnv: string; displayName: string; matchTerms: string[] }> = {
   balfour: {
     passwordEnv: 'BALFOUR_PASSWORD', secretEnv: 'BALFOUR_SECRET', displayName: 'Balfour & Co',
-    jobFilter: (job: any) => (job.Priority1 || '').toLowerCase() === 'high',
+    matchTerms: ['balfour'],
   },
 };
 
@@ -100,19 +100,16 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
 
   const [allApplications, allJobs] = await Promise.all([
     fetchModule(accessToken, 'Applications', 'Full_Name,First_Name,Last_Name,Application_Status,Job_Opening_Name,Client_Name,Created_Time,Updated_On,City,State'),
-    fetchModule(accessToken, 'Job_Openings', 'Job_Opening_Name,Client_Name,Account_Name,Job_Opening_Status,City,State,Created_Time,Number_of_Positions,Priority1'),
+    fetchModule(accessToken, 'Job_Openings', 'Job_Opening_Name,Client_Name,Account_Name,Client,Job_Opening_Status,City,State,Created_Time,Number_of_Positions,Priority1'),
   ]);
 
-  // Debug: temporarily return priority values to inspect
-  if (req.query.debug === '1') {
-    const priorities = new Set<string>();
-    allJobs.forEach(j => { const p = zohoStr(j.Priority1, ''); if (p) priorities.add(p); });
-    const highJobs = allJobs.filter(j => (j.Priority1 || '').toString().toLowerCase().includes('high'));
-    return res.status(200).json({ totalJobs: allJobs.length, uniquePriorities: [...priorities].sort(), highJobCount: highJobs.length, sampleJobs: allJobs.slice(0, 5).map(j => ({ name: j.Job_Opening_Name, priority: j.Priority1 })) });
-  }
-
-  // Filter jobs by client-specific criteria
-  const clientJobs = allJobs.filter(config.jobFilter);
+  // Filter jobs by client match terms (checks Client, Client_Name, Account_Name fields)
+  const clientJobs = allJobs.filter(j => {
+    const client = zohoStr(j.Client, '').toLowerCase();
+    const clientName = zohoStr(j.Client_Name, '').toLowerCase();
+    const accountName = zohoStr(j.Account_Name, '').toLowerCase();
+    return config.matchTerms.some(term => client.includes(term) || clientName.includes(term) || accountName.includes(term));
+  });
   const clientJobNames = new Set(clientJobs.map(j => j.Job_Opening_Name));
 
   // Filter applications to only those for client jobs
