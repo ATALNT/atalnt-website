@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   Lock, AlertCircle, Shield, Users, Briefcase, ChevronDown, ChevronUp,
-  LogOut, Download, Search, ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle
+  LogOut, Download, Search, ArrowUpDown, ArrowUp, ArrowDown, AlertTriangle, MessageSquare
 } from 'lucide-react';
 import { exportToExcel } from '@/lib/export-excel';
 
@@ -165,6 +165,7 @@ function ClientDashboardContent({ token, clientName, onLogout }: { token: string
   const [candidateSearch, setCandidateSearch] = useState('');
   const [candidateSort, setCandidateSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'submittedDate', dir: 'desc' });
   const [statusFilter, setStatusFilter] = useState('all');
+  const [expandedCandidate, setExpandedCandidate] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ['client-portal', clientName],
@@ -466,20 +467,53 @@ function ClientDashboardContent({ token, clientName, onLogout }: { token: string
                           const submitted = c.submittedDate ? new Date(c.submittedDate).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '—';
                           const updated = c.lastUpdated ? new Date(c.lastUpdated).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '—';
                           const location = [c.city, c.state].filter(Boolean).join(', ') || '—';
+                          const hasNotes = c.notes && c.notes.length > 0;
+                          const isExpanded = expandedCandidate === c.id;
                           return (
-                            <TableRow key={i} className="border-white/[0.03] hover:bg-white/[0.02]">
-                              <TableCell className="font-medium text-white/80">{c.candidateName}</TableCell>
-                              <TableCell className="text-white/50 text-sm max-w-[250px] truncate">{c.jobTitle}</TableCell>
-                              <TableCell>
-                                <span className="text-[10px] px-2 py-0.5 rounded font-medium whitespace-nowrap"
-                                  style={{ backgroundColor: `${color}20`, color }}>
-                                  {c.status}
-                                </span>
-                              </TableCell>
-                              <TableCell className="text-white/40 text-xs whitespace-nowrap">{location}</TableCell>
-                              <TableCell className="text-white/40 text-xs whitespace-nowrap">{submitted}</TableCell>
-                              <TableCell className="text-white/40 text-xs whitespace-nowrap">{updated}</TableCell>
-                            </TableRow>
+                            <>
+                              <TableRow key={i} className={`border-white/[0.03] hover:bg-white/[0.02] ${hasNotes ? 'cursor-pointer' : ''}`}
+                                onClick={() => hasNotes && setExpandedCandidate(isExpanded ? null : c.id)}>
+                                <TableCell className="font-medium text-white/80">
+                                  <span className="flex items-center gap-1.5">
+                                    {c.candidateName}
+                                    {hasNotes && <MessageSquare className={`h-3 w-3 ${isExpanded ? 'text-[#D4A853]' : 'text-white/20'}`} />}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-white/50 text-sm max-w-[250px] truncate">{c.jobTitle}</TableCell>
+                                <TableCell>
+                                  <span className="text-[10px] px-2 py-0.5 rounded font-medium whitespace-nowrap"
+                                    style={{ backgroundColor: `${color}20`, color }}>
+                                    {c.status}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-white/40 text-xs whitespace-nowrap">{location}</TableCell>
+                                <TableCell className="text-white/40 text-xs whitespace-nowrap">{submitted}</TableCell>
+                                <TableCell className="text-white/40 text-xs whitespace-nowrap">{updated}</TableCell>
+                              </TableRow>
+                              {isExpanded && hasNotes && (
+                                <TableRow key={`${i}-notes`} className="border-white/[0.03]">
+                                  <TableCell colSpan={6} className="p-0">
+                                    <div className="bg-white/[0.02] border-l-2 border-[#D4A853]/30 mx-4 my-2 rounded-r-md">
+                                      <div className="px-4 py-3 space-y-3">
+                                        <p className="text-[10px] text-white/25 uppercase tracking-widest font-semibold">Activity Notes</p>
+                                        {c.notes.map((note: any, ni: number) => (
+                                          <div key={ni} className="flex gap-3">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-[#D4A853]/40 mt-1.5 shrink-0" />
+                                            <div className="min-w-0">
+                                              <p className="text-xs text-white/60 leading-relaxed">{note.note}</p>
+                                              <p className="text-[10px] text-white/20 mt-0.5">
+                                                {note.by && <span>{note.by} · </span>}
+                                                {note.date ? new Date(note.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </>
                           );
                         })}
                       </TableBody>

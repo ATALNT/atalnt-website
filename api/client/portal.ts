@@ -99,7 +99,7 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
   const accessToken = await getZohoAccessToken();
 
   const [allApplications, allJobs] = await Promise.all([
-    fetchModule(accessToken, 'Applications', 'Full_Name,First_Name,Last_Name,Application_Status,Job_Opening_Name,Client_Name,Created_Time,Updated_On,City,State'),
+    fetchModule(accessToken, 'Applications', 'id,Full_Name,First_Name,Last_Name,Application_Status,Job_Opening_Name,Client_Name,Created_Time,Updated_On,City,State'),
     fetchModule(accessToken, 'Job_Openings', 'Job_Opening_Name,Client_Name,Account_Name,Client,Job_Opening_Status,City,State,Created_Time,Number_of_Positions,Priority1'),
   ]);
 
@@ -134,6 +134,7 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
     '2nd interview-scheduled': '2nd Interview', '3rd interview-scheduled': '3rd Interview',
     'interview-in-progress': 'Interview in Progress',
     'interviewed - rejected': 'Not Selected', 'interviewed-rejected': 'Not Selected',
+    'rejected by hiring manager': 'Not Selected', 'rejected-by-hiring-manager': 'Not Selected',
     'to-be-offered': 'Offer Pending', 'offer-accepted': 'Offer Accepted',
     'hired': 'Hired',
     'rejected': 'Not Selected', 'rejected-by-client': 'Not Selected',
@@ -141,10 +142,31 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
     'qualified': 'Under Review',
   };
 
+  // Fetch notes for all client applications in parallel
+  const notesMap: Record<string, Array<{ note: string; date: string; by: string }>> = {};
+  await Promise.all(clientApplications.map(async (a) => {
+    const appId = a.id;
+    if (!appId) return;
+    try {
+      const url = `https://recruit.zoho.com/recruit/v2/Applications/${appId}/Notes?per_page=50`;
+      const resp = await fetch(url, { headers: { Authorization: `Zoho-oauthtoken ${accessToken}` } });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (data.data && data.data.length > 0) {
+        notesMap[appId] = data.data.map((n: any) => ({
+          note: n.Note_Content || '',
+          date: n.Created_Time || n.Modified_Time || '',
+          by: zohoStr(n.Created_By, '') || zohoStr(n.Owner, ''),
+        })).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      }
+    } catch { /* skip notes for this record */ }
+  }));
+
   // Build candidates from client applications only
   const candidates = clientApplications.map(a => {
     const status = a.Application_Status || 'New';
     return {
+      id: a.id || '',
       candidateName: a.Full_Name || 'Unknown',
       firstName: a.First_Name || '',
       lastName: a.Last_Name || '',
@@ -155,6 +177,7 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
       state: zohoStr(a.State, ''),
       submittedDate: a.Created_Time || '',
       lastUpdated: a.Updated_On || '',
+      notes: notesMap[a.id] || [],
     };
   }).sort((a, b) => new Date(b.submittedDate).getTime() - new Date(a.submittedDate).getTime());
 
