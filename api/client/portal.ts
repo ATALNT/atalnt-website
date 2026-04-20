@@ -125,15 +125,20 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
     return !INTERNAL_ONLY_STATUSES.has(status);
   });
 
-  // Status mapping: internal Zoho statuses → client-friendly labels
+  // Status mapping: normalize Zoho statuses → client-friendly labels
+  // Uses lowercase keys for case-insensitive matching
   const statusMap: Record<string, string> = {
-    'Submitted-to-Client': 'Submitted', 'Submitted-to-Hiring-Manager': 'Submitted',
-    'Interview-Scheduled': 'Interview Scheduled',
-    '2nd Interview-Scheduled': '2nd Interview', '3rd Interview-Scheduled': '3rd Interview',
-    'Interview-in-Progress': 'Interview in Progress', 'To-be-Offered': 'Offer Pending',
-    'Offer-Accepted': 'Offer Accepted', 'Hired': 'Hired',
-    'Rejected': 'Not Selected', 'Rejected-by-Client': 'Not Selected',
-    'On Hold': 'On Hold', 'Qualified': 'Under Review',
+    'submitted-to-client': 'Submitted', 'submitted-to-hiring manager': 'Submitted',
+    'submitted-to-hiring-manager': 'Submitted',
+    'interview-scheduled': 'Interview Scheduled', 'interview scheduled': 'Interview Scheduled',
+    '2nd interview-scheduled': '2nd Interview', '3rd interview-scheduled': '3rd Interview',
+    'interview-in-progress': 'Interview in Progress',
+    'interviewed - rejected': 'Not Selected', 'interviewed-rejected': 'Not Selected',
+    'to-be-offered': 'Offer Pending', 'offer-accepted': 'Offer Accepted',
+    'hired': 'Hired',
+    'rejected': 'Not Selected', 'rejected-by-client': 'Not Selected',
+    'on hold': 'On Hold', 'on-hold': 'On Hold',
+    'qualified': 'Under Review',
   };
 
   // Build candidates from client applications only
@@ -144,7 +149,7 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
       firstName: a.First_Name || '',
       lastName: a.Last_Name || '',
       jobTitle: a.Job_Opening_Name || 'Unknown',
-      status: statusMap[status] || status.replace(/-/g, ' '),
+      status: statusMap[status.toLowerCase().trim()] || status.replace(/-/g, ' '),
       rawStatus: status,
       city: zohoStr(a.City, ''),
       state: zohoStr(a.State, ''),
