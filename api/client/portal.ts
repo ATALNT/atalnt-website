@@ -113,17 +113,27 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
   const clientJobNames = new Set(clientJobs.map(j => j.Job_Opening_Name));
 
   // Filter applications to only those for client jobs
-  const clientApplications = allApplications.filter(a => clientJobNames.has(a.Job_Opening_Name));
+  const allClientApps = allApplications.filter(a => clientJobNames.has(a.Job_Opening_Name));
+
+  // Only include candidates actually submitted to the client (not internal-only statuses)
+  const INTERNAL_ONLY_STATUSES = new Set([
+    'associated', 'applied', 'new', 'in-review',
+    'rejected by ops', 'rejected-by-ops', 'unqualified', 'withdrawn',
+  ]);
+  const clientApplications = allClientApps.filter(a => {
+    const status = (a.Application_Status || '').toLowerCase().trim();
+    return !INTERNAL_ONLY_STATUSES.has(status);
+  });
 
   // Status mapping: internal Zoho statuses → client-friendly labels
   const statusMap: Record<string, string> = {
-    'Associated': 'Submitted', 'New': 'Submitted', 'In-Review': 'Under Review',
-    'Submitted-to-Client': 'Submitted to You', 'Interview-Scheduled': 'Interview Scheduled',
+    'Submitted-to-Client': 'Submitted', 'Submitted-to-Hiring-Manager': 'Submitted',
+    'Interview-Scheduled': 'Interview Scheduled',
     '2nd Interview-Scheduled': '2nd Interview', '3rd Interview-Scheduled': '3rd Interview',
     'Interview-in-Progress': 'Interview in Progress', 'To-be-Offered': 'Offer Pending',
-    'Offer-Accepted': 'Offer Accepted', 'Hired': 'Hired', 'Rejected': 'Not Selected',
-    'Rejected-by-Client': 'Not Selected', 'On Hold': 'On Hold', 'Withdrawn': 'Withdrawn',
-    'Qualified': 'Qualified', 'Unqualified': 'Not Selected',
+    'Offer-Accepted': 'Offer Accepted', 'Hired': 'Hired',
+    'Rejected': 'Not Selected', 'Rejected-by-Client': 'Not Selected',
+    'On Hold': 'On Hold', 'Qualified': 'Under Review',
   };
 
   // Build candidates from client applications only
