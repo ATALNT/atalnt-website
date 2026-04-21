@@ -1,17 +1,8 @@
 import { Linkedin } from 'lucide-react';
 import nikJainImg from '@/assets/nik-jain.png';
-import kellyBrownImg from '@/assets/kelly-brown.jpg';
 import lavanyaThatikondaImg from '@/assets/lavanya-thatikonda.jpeg';
 
 const leaders = [
-  {
-    name: 'Kelly Brown',
-    role: 'Founding Partner',
-    bio: 'Founding Partner with over 15 years in global logistics and transportation recruiting. Kelly built her own agency from the ground up into a six-figure success, bringing resilience and relationship-driven strategies to ATALNT.',
-    image: kellyBrownImg,
-    objectPosition: 'object-[center_30%]',
-    linkedin: 'https://www.linkedin.com/in/kellydockrell/',
-  },
   {
     name: 'Lavanya Thatikonda',
     role: 'Principal Partner',
@@ -48,7 +39,7 @@ export const Leadership = () => {
         </div>
 
         {/* Leaders Grid */}
-        <div className="grid md:grid-cols-3 gap-8">
+        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
           {leaders.map((leader, index) => (
             <div
               key={leader.name}
