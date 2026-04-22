@@ -119,6 +119,7 @@ async function handleGetData(req: VercelRequest, res: VercelResponse) {
   const INTERNAL_ONLY_STATUSES = new Set([
     'associated', 'applied', 'new', 'in-review',
     'rejected by ops', 'rejected-by-ops', 'unqualified', 'withdrawn',
+    'on hold', 'on-hold', 'archived', 'inactive',
   ]);
   const clientApplications = allClientApps.filter(a => {
     const status = (a.Application_Status || '').toLowerCase().trim();
