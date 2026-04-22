@@ -141,6 +141,8 @@ function SalesDashboard({ token, onLogout }: { token: string; onLogout: () => vo
   const [clientsSort, setClientsSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'createdTime', dir: 'desc' });
   const [leadsExpanded, setLeadsExpanded] = useState(true);
   const [leadsSearch, setLeadsSearch] = useState('');
+  const [leadsOwnerFilter, setLeadsOwnerFilter] = useState('all');
+  const [leadsSort, setLeadsSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'createdTime', dir: 'desc' });
   const [signExpanded, setSignExpanded] = useState(true);
   const [signSearch, setSignSearch] = useState('');
   const [signFilter, setSignFilter] = useState('all');
@@ -168,7 +170,20 @@ function SalesDashboard({ token, onLogout }: { token: string; onLogout: () => vo
   const d = query.data?.data;
   if (!d) return null;
 
-  const { overview = {}, leadsByStatus = [], leadsBySource = [], dealsByStage = [], dealsByOwner = [], callsByOwner = [], recentDeals = [], clients = [], signDocuments = [] } = d;
+  const { overview = {}, leadRecords = [], leadsByOwner = [], leadsByStatus = [], leadsBySource = [], dealsByStage = [], dealsByOwner = [], callsByOwner = [], recentDeals = [], clients = [], signDocuments = [] } = d;
+
+  // All unique owners for the filter tabs
+  const leadOwners: string[] = [...new Set(leadRecords.map((l: any) => l.owner))].sort() as string[];
+
+  // Filtered + sorted leads
+  const filteredLeads = leadRecords
+    .filter((l: any) => leadsOwnerFilter === 'all' || l.owner === leadsOwnerFilter)
+    .filter((l: any) => !leadsSearch || [l.fullName, l.company, l.email, l.leadStatus, l.leadSource, l.owner].some((v: string) => (v || '').toLowerCase().includes(leadsSearch.toLowerCase())))
+    .sort((a: any, b: any) => {
+      const dir = leadsSort.dir === 'asc' ? 1 : -1;
+      if (leadsSort.key === 'createdTime') return (new Date(a.createdTime).getTime() - new Date(b.createdTime).getTime()) * dir;
+      return String(a[leadsSort.key] || '').localeCompare(String(b[leadsSort.key] || '')) * dir;
+    });
 
   function SortHead({ col, sort, setSort }: { col: { key: string; label: string }; sort: { key: string; dir: string }; setSort: (s: any) => void }) {
     return (
@@ -273,7 +288,81 @@ function SalesDashboard({ token, onLogout }: { token: string; onLogout: () => vo
           ))}
         </div>
 
-        {/* Pipeline + Leads side by side */}
+        {/* Leads Tracker — full table with owner filter */}
+        <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden mb-4">
+          <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D4A853]/30 to-transparent" />
+          <CardHeader className="pb-2 cursor-pointer select-none" onClick={() => setLeadsExpanded(v => !v)}>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+                {leadsExpanded ? <ChevronUp className="h-3.5 w-3.5 text-[#D4A853]/60" /> : <ChevronDown className="h-3.5 w-3.5 text-[#D4A853]/60" />}
+                <Users className="h-3.5 w-3.5 text-[#D4A853]/60" />Leads Tracker
+              </CardTitle>
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="bg-[#D4A853]/10 text-[#D4A853] border border-[#D4A853]/20 text-xs">
+                  {filteredLeads.length} leads
+                </Badge>
+                <button onClick={(e) => { e.stopPropagation(); exportToExcel(filteredLeads.map((l: any) => ({ ...l, createdTime: fmtDate(l.createdTime) })),
+                  [{ key: 'fullName', label: 'Name' }, { key: 'company', label: 'Company' }, { key: 'email', label: 'Email' }, { key: 'phone', label: 'Phone' }, { key: 'leadSource', label: 'Source' }, { key: 'leadStatus', label: 'Status' }, { key: 'owner', label: 'Owner' }, { key: 'createdTime', label: 'Created' }],
+                  `ATALNT_Leads${leadsOwnerFilter !== 'all' ? '_' + leadsOwnerFilter : ''}`, 'Leads'); }}
+                  className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded px-2 py-1 transition-colors">
+                  <Download className="h-3 w-3" />Excel
+                </button>
+              </div>
+            </div>
+          </CardHeader>
+          {leadsExpanded && (
+            <CardContent>
+              {/* Owner filter tabs */}
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                <button onClick={() => setLeadsOwnerFilter('all')}
+                  className={`text-[10px] px-2.5 py-1 rounded-md border transition-colors ${leadsOwnerFilter === 'all' ? 'bg-[#D4A853]/20 text-[#D4A853] border-[#D4A853]/30' : 'bg-white/[0.02] text-white/40 border-white/[0.06] hover:bg-white/[0.04]'}`}>
+                  All <span className="font-semibold ml-0.5">{leadRecords.length}</span>
+                </button>
+                {leadsByOwner.map((o: any) => (
+                  <button key={o.owner} onClick={() => setLeadsOwnerFilter(o.owner)}
+                    className={`text-[10px] px-2.5 py-1 rounded-md border transition-colors ${leadsOwnerFilter === o.owner ? 'bg-[#D4A853]/20 text-[#D4A853] border-[#D4A853]/30' : 'bg-white/[0.02] text-white/40 border-white/[0.06] hover:bg-white/[0.04]'}`}>
+                    {o.owner} <span className="font-semibold ml-0.5">{o.count}</span>
+                  </button>
+                ))}
+              </div>
+              <SearchInput value={leadsSearch} onChange={setLeadsSearch} placeholder="Search name, company, email, status..." />
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="border-white/[0.04] hover:bg-transparent">
+                      <SortHead col={{ key: 'fullName', label: 'Name' }} sort={leadsSort} setSort={setLeadsSort} />
+                      <SortHead col={{ key: 'company', label: 'Company' }} sort={leadsSort} setSort={setLeadsSort} />
+                      <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Email</TableHead>
+                      <SortHead col={{ key: 'leadSource', label: 'Source' }} sort={leadsSort} setSort={setLeadsSort} />
+                      <SortHead col={{ key: 'leadStatus', label: 'Status' }} sort={leadsSort} setSort={setLeadsSort} />
+                      <SortHead col={{ key: 'owner', label: 'Owner' }} sort={leadsSort} setSort={setLeadsSort} />
+                      <SortHead col={{ key: 'createdTime', label: 'Added' }} sort={leadsSort} setSort={setLeadsSort} />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredLeads.map((lead: any, i: number) => (
+                      <TableRow key={i} className="border-white/[0.03] hover:bg-white/[0.02]">
+                        <TableCell className="font-medium text-white/80">{lead.fullName}</TableCell>
+                        <TableCell className="text-white/50 text-sm max-w-[200px] truncate">{lead.company || '—'}</TableCell>
+                        <TableCell className="text-white/40 text-xs max-w-[180px] truncate">{lead.email || '—'}</TableCell>
+                        <TableCell className="text-white/40 text-xs whitespace-nowrap">{lead.leadSource || '—'}</TableCell>
+                        <TableCell>
+                          <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-blue-500/10 text-blue-400 whitespace-nowrap">{lead.leadStatus || '—'}</span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-[10px] px-2 py-0.5 rounded font-medium bg-[#D4A853]/10 text-[#D4A853] whitespace-nowrap">{lead.owner}</span>
+                        </TableCell>
+                        <TableCell className="text-white/40 text-xs whitespace-nowrap">{fmtDate(lead.createdTime)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+
+        {/* Pipeline + Leads summary side by side */}
         <div className="grid md:grid-cols-2 gap-4 mb-4">
           {/* Deals by Stage */}
           <Card className="border-white/[0.06] bg-white/[0.02]">

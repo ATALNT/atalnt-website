@@ -292,6 +292,24 @@ async function handleSalesData(config: typeof CLIENT_CONFIG[string], res: Vercel
     createdTime: d.Created_Time || '', probability: d.Probability || 0,
   }));
 
+  // All leads as individual records
+  const leadRecords = leads.map((l: any) => ({
+    firstName: l.First_Name || '',
+    lastName: l.Last_Name || '',
+    fullName: l.Full_Name || `${l.First_Name || ''} ${l.Last_Name || ''}`.trim() || 'Unknown',
+    company: l.Company || '',
+    email: l.Email || '',
+    phone: l.Phone || '',
+    leadSource: l.Lead_Source || '',
+    leadStatus: l.Lead_Status || '',
+    owner: zohoStr(l.Owner, 'Unknown'),
+    createdTime: l.Created_Time || '',
+  })).sort((a: any, b: any) => new Date(b.createdTime).getTime() - new Date(a.createdTime).getTime());
+
+  // Leads by owner summary
+  const leadsByOwner: Record<string, number> = {};
+  leadRecords.forEach((l: any) => { leadsByOwner[l.owner] = (leadsByOwner[l.owner] || 0) + 1; });
+
   // Clients list
   const clients = accounts.map((a: any) => ({
     accountName: a.Account_Name || 'Unknown', phone: a.Phone || '',
@@ -311,6 +329,8 @@ async function handleSalesData(config: typeof CLIENT_CONFIG[string], res: Vercel
         totalRevenue, totalClients: accounts.length, totalCalls: calls.length,
         totalSignDocs: signDocuments.length,
       },
+      leadRecords,
+      leadsByOwner: Object.entries(leadsByOwner).map(([owner, count]) => ({ owner, count })).sort((a, b) => b.count - a.count),
       leadsByStatus: Object.entries(leadsByStatus).map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count),
       leadsBySource: Object.entries(leadsBySource).map(([source, count]) => ({ source, count })).sort((a, b) => b.count - a.count),
       dealsByStage: Object.entries(dealsByStage).map(([stage, d]) => ({ stage, count: d.count, value: d.value })).sort((a, b) => b.count - a.count),
