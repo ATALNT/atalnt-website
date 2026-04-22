@@ -262,7 +262,7 @@ function SalesDashboard({ token, onLogout }: { token: string; onLogout: () => vo
             <img src="/atalnt-logo-transparent.png" alt="ATALNT" className="h-8" />
             <div>
               <h1 className="text-lg font-bold text-white font-display">Sales <span className="text-white/40 font-normal">Dashboard</span></h1>
-              <p className="text-[11px] text-white/25">ATALNT internal</p>
+              <p className="text-[11px] text-white/25">Scope: <span className="text-[#D4A853]/80 font-medium">Kavya Nishad</span></p>
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={onLogout} className="text-white/40 hover:text-white/60 hover:bg-white/[0.05]">

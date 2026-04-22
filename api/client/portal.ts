@@ -216,18 +216,28 @@ async function handleRecruitData(config: typeof CLIENT_CONFIG[string], res: Verc
 }
 
 // ─── Sales (CRM) data ────────────────────────
+// Scope every metric to this owner's activity only (case-insensitive substring match).
+const SALES_OWNER_FILTER = 'kavya';
+
 async function handleSalesData(config: typeof CLIENT_CONFIG[string], res: VercelResponse) {
   const crmToken = await getZohoCrmToken();
   const signToken = await getZohoSignToken();
 
-  const [leads, deals, accounts, calls] = await Promise.all([
+  const [leadsRaw, dealsRaw, accountsRaw, callsRaw] = await Promise.all([
     fetchCrmModule(crmToken, 'Leads', 'First_Name,Last_Name,Full_Name,Lead_Source,Lead_Status,Owner,Created_Time,Phone,Email,Company'),
     fetchCrmModule(crmToken, 'Deals', 'Deal_Name,Stage,Amount,Close_Date,Account_Name,Owner,Created_Time,Probability'),
     fetchCrmModule(crmToken, 'Accounts', 'Account_Name,Phone,Website,Industry,Owner,Created_Time,Billing_City,Billing_State'),
     fetchCrmModule(crmToken, 'Calls', 'Subject,Status,Duration_in_seconds,Owner,Created_Time,Call_Type'),
   ]);
 
-  // Fetch Zoho Sign documents if token available
+  // Filter all CRM records to the scoped owner
+  const ownerMatches = (rec: any) => zohoStr(rec?.Owner, '').toLowerCase().includes(SALES_OWNER_FILTER);
+  const leads = leadsRaw.filter(ownerMatches);
+  const deals = dealsRaw.filter(ownerMatches);
+  const accounts = accountsRaw.filter(ownerMatches);
+  const calls = callsRaw.filter(ownerMatches);
+
+  // Fetch Zoho Sign documents if token available (also filtered by owner)
   let signDocuments: any[] = [];
   if (signToken) {
     try {
@@ -241,7 +251,7 @@ async function handleSalesData(config: typeof CLIENT_CONFIG[string], res: Vercel
           createdTime: d.created_time || '',
           owner: d.owner_first_name ? `${d.owner_first_name} ${d.owner_last_name || ''}`.trim() : 'Unknown',
           recipients: (d.actions || []).map((a: any) => ({ name: `${a.recipient_name || ''}`.trim(), email: a.recipient_email || '', status: a.action_status || '' })),
-        }));
+        })).filter((d: any) => (d.owner || '').toLowerCase().includes(SALES_OWNER_FILTER));
       }
     } catch {}
   }
@@ -323,6 +333,7 @@ async function handleSalesData(config: typeof CLIENT_CONFIG[string], res: Vercel
     data: {
       portalType: 'sales',
       clientName: config.displayName,
+      ownerScope: 'Kavya Nishad',
       overview: {
         totalLeads: leads.length, newLeads30d, openDeals: openDeals.length,
         totalDeals: deals.length, closedWon: closedWon.length,
