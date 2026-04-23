@@ -7,6 +7,8 @@ import bettawayLogo from '@/assets/partners/bettaway.png';
 import freightLogo from '@/assets/partners/007freight.png';
 import brownLogo from '@/assets/partners/brownlogistics.png';
 import servefreightLogo from '@/assets/partners/servefreight.svg';
+import adamsElectricLogo from '@/assets/partners/adamselectric.png';
+import vannoyLogo from '@/assets/partners/vannoy.png';
 
 const partners = [
   { name: 'Landstar', logo: landstarLogo, hasBg: true },
@@ -18,6 +20,8 @@ const partners = [
   { name: '007 Freight', logo: freightLogo, hasBg: false },
   { name: 'Brown Integrated Logistics', logo: brownLogo, hasBg: true },
   { name: 'Serve Freight', logo: servefreightLogo, hasBg: false },
+  { name: 'Adams Electric Company', logo: adamsElectricLogo, hasBg: true },
+  { name: 'Vannoy Construction', logo: vannoyLogo, hasBg: true },
 ];
 
 const LogoItem = ({ partner }: { partner: typeof partners[0] }) => (
