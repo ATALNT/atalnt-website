@@ -20,8 +20,8 @@ const partners = [
   { name: '007 Freight', logo: freightLogo, hasBg: false },
   { name: 'Brown Integrated Logistics', logo: brownLogo, hasBg: true },
   { name: 'Serve Freight', logo: servefreightLogo, hasBg: false },
-  { name: 'Adams Electric Company', logo: adamsElectricLogo, hasBg: true },
-  { name: 'Vannoy Construction', logo: vannoyLogo, hasBg: true },
+  { name: 'Adams Electric Company', logo: adamsElectricLogo, hasBg: false },
+  { name: 'Vannoy Construction', logo: vannoyLogo, hasBg: false },
 ];
 
 const LogoItem = ({ partner }: { partner: typeof partners[0] }) => (
