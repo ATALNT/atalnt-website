@@ -4,23 +4,17 @@ import efwLogo from '@/assets/partners/efw.png';
 import forwardairLogo from '@/assets/partners/forwardair.svg';
 import pegasusLogo from '@/assets/partners/pegasus.png';
 import bettawayLogo from '@/assets/partners/bettaway.png';
-import rxoLogo from '@/assets/partners/rxo.svg';
-import stevensglobalLogo from '@/assets/partners/stevensglobal.png';
 import freightLogo from '@/assets/partners/007freight.png';
 import brownLogo from '@/assets/partners/brownlogistics.png';
 import servefreightLogo from '@/assets/partners/servefreight.svg';
-import aeronetLogo from '@/assets/partners/aeronet.png';
 
 const partners = [
   { name: 'Landstar', logo: landstarLogo, hasBg: true },
   { name: 'Forward Air', logo: forwardairLogo, hasBg: true },
   { name: 'Armstrong Transport Group', logo: armstrongLogo, hasBg: false },
-  { name: 'RXO', logo: rxoLogo, hasBg: true },
   { name: 'Pegasus Logistics Group', logo: pegasusLogo, hasBg: true },
   { name: 'Bettaway Supply Chain', logo: bettawayLogo, hasBg: false },
   { name: 'EFW', logo: efwLogo, hasBg: false },
-  { name: 'Aeronet Worldwide', logo: aeronetLogo, hasBg: true },
-  { name: 'Stevens Global Logistics', logo: stevensglobalLogo, hasBg: true },
   { name: '007 Freight', logo: freightLogo, hasBg: false },
   { name: 'Brown Integrated Logistics', logo: brownLogo, hasBg: true },
   { name: 'Serve Freight', logo: servefreightLogo, hasBg: false },
