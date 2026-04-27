@@ -91,6 +91,10 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const [openJobsSort, setOpenJobsSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'priorityTier', dir: 'asc' });
   const [expandedJobs, setExpandedJobs] = useState<Set<string>>(new Set());
   const [openJobsExpanded, setOpenJobsExpanded] = useState(true);
+  const [activeClientsExpanded, setActiveClientsExpanded] = useState(true);
+  const [activeClientsSort, setActiveClientsSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'activeRoles', dir: 'desc' });
+  const [expandedActiveClients, setExpandedActiveClients] = useState<Set<string>>(new Set());
+  const [activeClientsSearch, setActiveClientsSearch] = useState('');
   const [interviewExpanded, setInterviewExpanded] = useState(true);
   const [formSubmissionsExpanded, setFormSubmissionsExpanded] = useState(true);
   const [formSubmissionsSort, setFormSubmissionsSort] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'totalFormSubmissions', dir: 'desc' });
@@ -146,6 +150,7 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
   const interviewPipeline = appsData?.interviewPipeline || [];
   const interviewStageCounts = appsData?.interviewStageCounts || [];
   const openJobsReport = appsData?.openJobsReport || [];
+  const clientsSummary = appsData?.clientsSummary || [];
   const recruiterFormSubmissions = appsData?.recruiterFormSubmissions || [];
 
   return (
@@ -426,6 +431,169 @@ export function RecruitDashboard({ token, datePreset, dateRange }: RecruitDashbo
             </>
           ) : (
             <p className="text-center text-white/30 py-8">No open jobs found</p>
+          )}
+        </CardContent>}
+      </Card>
+
+      {/* ============================================ */}
+      {/* ACTIVE CLIENTS SUMMARY                        */}
+      {/* Per-client roll-up: # active roles + Ops Mgr  */}
+      {/* ============================================ */}
+      <Card className="border-white/[0.06] bg-white/[0.02] backdrop-blur-sm relative overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-blue-400/30 to-transparent" />
+        <CardHeader className="pb-2 cursor-pointer select-none" onClick={() => setActiveClientsExpanded((v) => !v)}>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-[11px] font-semibold text-white/30 uppercase tracking-[0.15em] flex items-center gap-2">
+              {activeClientsExpanded ? <ChevronUp className="h-3.5 w-3.5 text-blue-400/60" /> : <ChevronDown className="h-3.5 w-3.5 text-blue-400/60" />}
+              <Building2 className="h-3.5 w-3.5 text-blue-400/60" />
+              Active Clients
+            </CardTitle>
+            <div className="flex items-center gap-3">
+              <span className="text-[10px] text-white/40">
+                Roles: <span className="text-blue-400 font-semibold">{clientsSummary.reduce((sum: number, c: any) => sum + c.activeRoles, 0)}</span>
+              </span>
+              <Badge variant="secondary" className="bg-blue-400/10 text-blue-300 border border-blue-400/20 text-xs">
+                {clientsSummary.length} Clients
+              </Badge>
+              <button onClick={(e) => { e.stopPropagation(); exportToExcel(clientsSummary, [
+                { key: 'clientName', label: 'Client' },
+                { key: 'activeRoles', label: 'Active Roles' },
+                { key: 'opsManager', label: 'Ops Manager' },
+                { key: 'totalSubmissions', label: 'Submissions' },
+                { key: 'totalInterviews', label: 'Interviews' },
+                { key: 'tier1Count', label: 'Tier 1' },
+                { key: 'tier2Count', label: 'Tier 2' },
+                { key: 'tier3Count', label: 'Tier 3' },
+              ], 'Active_Clients', 'Clients'); }} className="flex items-center gap-1 text-[10px] text-white/30 hover:text-white/60 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.06] rounded px-2 py-1 transition-colors" title="Export to Excel"><Download className="h-3 w-3" />Excel</button>
+            </div>
+          </div>
+        </CardHeader>
+        {activeClientsExpanded && <CardContent>
+          {clientsSummary.length > 0 ? (
+            <>
+            <SearchInput value={activeClientsSearch} onChange={setActiveClientsSearch} placeholder="Search clients, ops managers..." />
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-white/[0.04] hover:bg-transparent">
+                    {[
+                      { key: 'clientName', label: 'Client', align: '' },
+                      { key: 'activeRoles', label: 'Active Roles', align: 'text-right' },
+                      { key: 'opsManager', label: 'Ops Manager', align: '' },
+                      { key: 'totalSubmissions', label: 'Submissions', align: 'text-right' },
+                      { key: 'totalInterviews', label: 'Interviews', align: 'text-right' },
+                      { key: 'tierMix', label: 'Tier Mix', align: '' },
+                    ].map((col) => (
+                      <TableHead
+                        key={col.key}
+                        className={`text-white/25 text-[10px] uppercase tracking-widest cursor-pointer hover:text-white/50 select-none transition-colors ${col.align}`}
+                        onClick={() => setActiveClientsSort((prev) => ({
+                          key: col.key,
+                          dir: prev.key === col.key && prev.dir === 'asc' ? 'desc' : 'asc',
+                        }))}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {activeClientsSort.key === col.key ? (
+                            activeClientsSort.dir === 'asc' ? <ArrowUp className="h-3 w-3 text-blue-400" /> : <ArrowDown className="h-3 w-3 text-blue-400" />
+                          ) : (
+                            <ArrowUpDown className="h-3 w-3 opacity-30" />
+                          )}
+                        </span>
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...clientsSummary].filter((c: any) => matchesSearch(c, activeClientsSearch, ['clientName', 'opsManager'])).sort((a: any, b: any) => {
+                    const k = activeClientsSort.key;
+                    const dir = activeClientsSort.dir === 'asc' ? 1 : -1;
+                    if (k === 'activeRoles' || k === 'totalSubmissions' || k === 'totalInterviews') return (a[k] - b[k]) * dir;
+                    if (k === 'tierMix') return ((a.tier1Count * 100 + a.tier2Count * 10 + a.tier3Count) - (b.tier1Count * 100 + b.tier2Count * 10 + b.tier3Count)) * dir;
+                    return String(a[k] || '').localeCompare(String(b[k] || '')) * dir;
+                  }).map((c: any, i: number) => {
+                    const isExpanded = expandedActiveClients.has(c.clientName);
+                    return (
+                      <>
+                        <TableRow
+                          key={`client-${i}`}
+                          className="border-white/[0.03] hover:bg-white/[0.02] cursor-pointer"
+                          onClick={() => setExpandedActiveClients((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(c.clientName)) next.delete(c.clientName);
+                            else next.add(c.clientName);
+                            return next;
+                          })}
+                        >
+                          <TableCell className="text-white/80 font-medium">
+                            <span className="inline-flex items-center gap-2">
+                              {isExpanded ? <ChevronUp className="h-3 w-3 text-blue-400" /> : <ChevronDown className="h-3 w-3 text-white/30" />}
+                              {c.clientName}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant="secondary" className="bg-blue-400/10 text-blue-300 border border-blue-400/20">
+                              {c.activeRoles}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-white/60">{c.opsManager}</TableCell>
+                          <TableCell className="text-right text-white/70">{c.totalSubmissions}</TableCell>
+                          <TableCell className="text-right text-white/70">{c.totalInterviews}</TableCell>
+                          <TableCell>
+                            <span className="inline-flex items-center gap-1.5 text-[10px]">
+                              {c.tier1Count > 0 && <span className="text-red-400">T1: {c.tier1Count}</span>}
+                              {c.tier2Count > 0 && <span className="text-amber-400">T2: {c.tier2Count}</span>}
+                              {c.tier3Count > 0 && <span className="text-emerald-400">T3: {c.tier3Count}</span>}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                        {isExpanded && c.roles && c.roles.length > 0 && (
+                          <TableRow key={`client-${i}-roles`} className="border-white/[0.03] bg-white/[0.01]">
+                            <TableCell colSpan={6}>
+                              <div className="border-l-2 border-blue-400/20 ml-4 pl-4 py-3">
+                                <p className="text-[10px] uppercase tracking-widest text-white/40 mb-2">Roles for {c.clientName}</p>
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow className="border-white/[0.04] hover:bg-transparent">
+                                      <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Job Title</TableHead>
+                                      <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Tier</TableHead>
+                                      <TableHead className="text-white/25 text-[10px] uppercase tracking-widest">Ops Manager</TableHead>
+                                      <TableHead className="text-white/25 text-[10px] uppercase tracking-widest text-right">Submissions</TableHead>
+                                      <TableHead className="text-white/25 text-[10px] uppercase tracking-widest text-right">Days Open</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {c.roles.map((r: any, ri: number) => {
+                                      const tierColor = r.priorityTier === 'Tier 1' ? 'bg-red-500/10 text-red-400 border-red-500/20'
+                                        : r.priorityTier === 'Tier 2' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                        : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+                                      return (
+                                        <TableRow key={`role-${i}-${ri}`} className="border-white/[0.03] hover:bg-white/[0.02]">
+                                          <TableCell className="text-white/70 text-sm">{r.jobTitle}</TableCell>
+                                          <TableCell>
+                                            <Badge variant="secondary" className={`${tierColor} border text-xs`}>{r.priorityTier}</Badge>
+                                          </TableCell>
+                                          <TableCell className="text-white/50 text-sm">{r.opsManager}</TableCell>
+                                          <TableCell className="text-right text-white/70">{r.totalSubmissions}</TableCell>
+                                          <TableCell className="text-right text-white/50 text-sm">{r.daysOpen}d</TableCell>
+                                        </TableRow>
+                                      );
+                                    })}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            </>
+          ) : (
+            <p className="text-center text-white/30 py-8">No active clients</p>
           )}
         </CardContent>}
       </Card>

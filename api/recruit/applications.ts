@@ -286,6 +286,8 @@ interface JobInfo {
   createdTime: string;
   city: string;
   assignedRecruiter: string;
+  requiredSkills: string;
+  opsManager: string;  // Account_Manager fallback to record Owner
 }
 
 // Fetch Job Openings to build a map of job title → job info (client, priority, status, etc.)
@@ -294,7 +296,7 @@ async function fetchJobInfoMap(accessToken: string): Promise<Map<string, JobInfo
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Job_Openings?fields=Posting_Title,Client_Name,Account_Name,Contact_Name,Client,Priority1,Required_Skills,Job_Opening_Status,Number_of_Positions,Created_Time,City,Assigned_Recruiter&page=${page}&per_page=200`;
+    const url = `https://recruit.zoho.com/recruit/v2/Job_Openings?fields=Posting_Title,Client_Name,Account_Name,Contact_Name,Client,Priority1,Required_Skills,Job_Opening_Status,Number_of_Positions,Created_Time,City,Assigned_Recruiter,Account_Manager,Owner&page=${page}&per_page=200`;
     const response = await fetch(url, {
       headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' },
     });
@@ -304,6 +306,7 @@ async function fetchJobInfoMap(accessToken: string): Promise<Map<string, JobInfo
       for (const job of data.data) {
         const title = job.Posting_Title;
         const client = zohoStr(job.Client, '') || zohoStr(job.Account_Name, '') || zohoStr(job.Client_Name, '') || zohoStr(job.Contact_Name, '');
+        const opsManager = zohoStr(job.Account_Manager, '') || zohoStr(job.Owner, 'Unassigned');
         if (title) {
           jobMap.set(title, {
             clientName: client,
@@ -314,6 +317,7 @@ async function fetchJobInfoMap(accessToken: string): Promise<Map<string, JobInfo
             city: zohoStr(job.City, ''),
             assignedRecruiter: zohoStr(job.Assigned_Recruiter, 'Unassigned'),
             requiredSkills: zohoStr(job.Required_Skills, ''),
+            opsManager,
           });
         }
       }
@@ -763,6 +767,77 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
     // =============================================
+    // 11b. ACTIVE CLIENTS SUMMARY
+    // Group active (in-progress) job openings by client.
+    // For each client: number of active roles, primary Ops Manager,
+    // total candidates submitted across those roles.
+    // =============================================
+    const clientAgg: Record<string, {
+      activeRoles: number;
+      totalSubmissions: number;
+      totalInterviews: number;
+      opsManagerCounts: Record<string, number>;
+      tier1: number; tier2: number; tier3: number;
+      latestRoleCreated: string;
+      roles: Array<{ jobTitle: string; priorityTier: string; opsManager: string; daysOpen: number; totalSubmissions: number; }>;
+    }> = {};
+
+    openJobsReport.forEach((job) => {
+      const client = job.clientName || 'Unknown';
+      if (!clientAgg[client]) {
+        clientAgg[client] = {
+          activeRoles: 0, totalSubmissions: 0, totalInterviews: 0,
+          opsManagerCounts: {}, tier1: 0, tier2: 0, tier3: 0,
+          latestRoleCreated: '', roles: [],
+        };
+      }
+      const a = clientAgg[client];
+      a.activeRoles++;
+      a.totalSubmissions += job.totalSubmissions || 0;
+      a.totalInterviews += job.interviewCount || 0;
+      const info = jobInfoMap.get(job.jobTitle);
+      const om = info?.opsManager || 'Unassigned';
+      a.opsManagerCounts[om] = (a.opsManagerCounts[om] || 0) + 1;
+      if (job.priorityTier === 'Tier 1') a.tier1++;
+      else if (job.priorityTier === 'Tier 2') a.tier2++;
+      else if (job.priorityTier === 'Tier 3') a.tier3++;
+      const created = info?.createdTime || '';
+      if (created && created > a.latestRoleCreated) a.latestRoleCreated = created;
+      a.roles.push({
+        jobTitle: job.jobTitle,
+        priorityTier: job.priorityTier,
+        opsManager: om,
+        daysOpen: job.daysOpen || 0,
+        totalSubmissions: job.totalSubmissions || 0,
+      });
+    });
+
+    const clientsSummary = Object.entries(clientAgg)
+      .map(([clientName, a]) => {
+        // Pick the most common Ops Manager across this client's roles
+        const primaryOpsManager = Object.entries(a.opsManagerCounts)
+          .sort((x, y) => y[1] - x[1])[0]?.[0] || 'Unassigned';
+        return {
+          clientName,
+          activeRoles: a.activeRoles,
+          opsManager: primaryOpsManager,
+          totalSubmissions: a.totalSubmissions,
+          totalInterviews: a.totalInterviews,
+          tier1Count: a.tier1,
+          tier2Count: a.tier2,
+          tier3Count: a.tier3,
+          latestRoleCreated: a.latestRoleCreated,
+          roles: a.roles.sort((x, y) => {
+            const tierOrder = (t: string) => t === 'Tier 1' ? 1 : t === 'Tier 2' ? 2 : t === 'Tier 3' ? 3 : 4;
+            const tierDiff = tierOrder(x.priorityTier) - tierOrder(y.priorityTier);
+            if (tierDiff !== 0) return tierDiff;
+            return y.totalSubmissions - x.totalSubmissions;
+          }),
+        };
+      })
+      .sort((a, b) => b.activeRoles - a.activeRoles || b.totalSubmissions - a.totalSubmissions);
+
+    // =============================================
     // 12. RECRUITER FORM SUBMISSIONS REPORT
     // Uses candidatesInRange (Candidate module Created_Time) for date filtering
     // Application data (status, job, client) looked up from latestAppByName
@@ -864,6 +939,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .sort((a, b) => a.date.localeCompare(b.date)),
         interviewPipeline,
         openJobsReport,
+        clientsSummary,
         recruiterFormSubmissions,
         candidateSubmissionsReport,
         interviewStageCounts: Object.entries(interviewStageCounts)
