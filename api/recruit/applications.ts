@@ -495,7 +495,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .map((app) => ({
         candidateName: app.Full_Name || 'Unknown',
         status: app.Application_Status,
-        clientName: zohoStr(app.Client_Name),
+        clientName: resolveJobInfo(app, jobInfoMap)?.clientName || zohoStr(app.Client_Name, '') || 'Unknown',
         jobTitle: app.Job_Opening_Name || 'Unknown',
         recruiter: getRecruiter(app),
         daysSinceUpdate: daysBetween(new Date(app.Updated_On), now),
@@ -571,9 +571,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!recruiterCandidatesMap[recruiter]) recruiterCandidatesMap[recruiter] = [];
       const app = latestAppByName.get(fullName);
       const jobTitle = app?.Job_Opening_Name || 'Unknown';
-      // Prefer the application's own Client_Name (per-application source of truth);
-      // only fall back to job-info lookup if the application has no client set.
-      const clientName = (app ? zohoStr(app.Client_Name, '') : '') || resolveJobInfo(app || {}, jobInfoMap)?.clientName || 'Unknown';
+      // The Application.Client_Name on Zoho often equals the agency itself
+      // ("Atalnt Recruiting") rather than the actual end customer. The Job
+      // Opening's Client field is the real customer, so resolve via the
+      // Job_Opening lookup id first and only fall back to Application.Client_Name.
+      const clientName = resolveJobInfo(app || {}, jobInfoMap)?.clientName || (app ? zohoStr(app.Client_Name, '') : '') || 'Unknown';
       recruiterCandidatesMap[recruiter].push({
         candidateName: fullName || 'Unknown',
         jobTitle,
@@ -626,7 +628,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }> = {};
 
     applications.forEach((app) => {
-      const client = zohoStr(app.Client_Name);
+      const client = resolveJobInfo(app, jobInfoMap)?.clientName || zohoStr(app.Client_Name, '') || 'Unknown';
       if (!clientStats[client]) {
         clientStats[client] = { total: 0, reachedSubmission: 0, reachedInterview: 0, hires: 0, rejected: 0, active: 0 };
       }
@@ -725,9 +727,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return {
           candidateName: fullName,
           jobTitle: app.Job_Opening_Name || 'Unknown',
-          // Prefer the application's own Client_Name (per-application source of truth);
-          // only fall back to job-info lookup if the application has no client set.
-          clientName: zohoStr(app.Client_Name, '') || resolveJobInfo(app, jobInfoMap)?.clientName || 'Unknown',
+          // Resolve via Job_Opening lookup id first — Application.Client_Name on
+          // Zoho often equals the agency itself ("Atalnt Recruiting") rather
+          // than the actual customer. The Job Opening's Client field is the
+          // real customer.
+          clientName: resolveJobInfo(app, jobInfoMap)?.clientName || zohoStr(app.Client_Name, '') || 'Unknown',
           recruiter: getRecruiter(app),
           candidateRecruiter: allCandidateRecruiters.get(fullName) || 'Unassigned',
           interviewStage: getInterviewStageLabel(app.Application_Status || '') || 'Unknown',
@@ -914,8 +918,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const status = app?.Application_Status || '';
       const maxStage = getMaxFunnelStage(status);
       const jobTitle = app?.Job_Opening_Name || 'Unknown';
-      // Prefer the application's own Client_Name; fall back to job-info lookup only if missing
-      const clientName = (app ? zohoStr(app.Client_Name, '') : '') || (app ? resolveJobInfo(app, jobInfoMap)?.clientName : '') || '';
+      // Job Opening's Client is the real customer; Application.Client_Name often = agency
+      const clientName = (app ? resolveJobInfo(app, jobInfoMap)?.clientName : '') || (app ? zohoStr(app.Client_Name, '') : '') || '';
 
       if (!formSubmissionStats[recruiter]) {
         formSubmissionStats[recruiter] = { totalFormSubmissions: 0, submittedToClient: 0, inInterview: 0, offers: 0, hires: 0, rejected: 0, active: 0, candidates: [] };
