@@ -124,6 +124,7 @@ interface ZohoApplication {
   id: string;
   Full_Name: string;
   Job_Opening_Name: string;
+  Job_Opening?: any;       // Lookup object: { id, name } — used to disambiguate jobs with duplicate titles
   Client_Name: any;
   Application_Status: string;
   Created_Time: string;
@@ -257,7 +258,7 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Full_Name,Job_Opening_Name,Client_Name,Application_Status,Created_Time,Updated_On,Last_Activity_Time,Application_Owner,Account_Manager,Assigned_Recruiter&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
+    const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Full_Name,Job_Opening_Name,Job_Opening,Client_Name,Application_Status,Created_Time,Updated_On,Last_Activity_Time,Application_Owner,Account_Manager,Assigned_Recruiter&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
     const response = await fetch(url, { headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' } });
     if (!response.ok) { if (response.status === 204) break; throw new Error(`Zoho Recruit API error: ${response.status}`); }
     const data = await response.json();
@@ -279,6 +280,8 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
 
 // Rich job info returned from Job Openings
 interface JobInfo {
+  id: string;
+  postingTitle: string;
   clientName: string;
   priority: string;
   status: string;
@@ -290,9 +293,20 @@ interface JobInfo {
   opsManager: string;  // Account_Manager fallback to record Owner
 }
 
-// Fetch Job Openings to build a map of job title → job info (client, priority, status, etc.)
-async function fetchJobInfoMap(accessToken: string): Promise<Map<string, JobInfo>> {
-  const jobMap = new Map<string, JobInfo>();
+interface JobInfoMaps {
+  byId: Map<string, JobInfo>;
+  byTitle: Map<string, JobInfo>;       // Last-write-wins fallback when only title is known
+  titlesWithMultiple: Set<string>;     // Titles that map to multiple distinct openings
+}
+
+// Fetch Job Openings. Returns:
+//   byId: keyed by Job Opening record id (authoritative — one entry per opening)
+//   byTitle: keyed by Posting_Title (lossy — collisions overwrite)
+//   titlesWithMultiple: titles that have more than one opening (so callers can avoid the title fallback)
+async function fetchJobInfoMap(accessToken: string): Promise<JobInfoMaps> {
+  const byId = new Map<string, JobInfo>();
+  const byTitle = new Map<string, JobInfo>();
+  const titleCount = new Map<string, number>();
   let page = 1;
   let hasMore = true;
   while (hasMore) {
@@ -305,28 +319,47 @@ async function fetchJobInfoMap(accessToken: string): Promise<Map<string, JobInfo
     if (data.data) {
       for (const job of data.data) {
         const title = job.Posting_Title;
+        const id = job.id;
+        if (!id || !title) continue;
         const client = zohoStr(job.Client, '') || zohoStr(job.Account_Name, '') || zohoStr(job.Client_Name, '') || zohoStr(job.Contact_Name, '');
         const opsManager = zohoStr(job.Account_Manager, '') || zohoStr(job.Owner, 'Unassigned');
-        if (title) {
-          jobMap.set(title, {
-            clientName: client,
-            priority: zohoStr(job.Priority1, 'N/A'),
-            status: zohoStr(job.Job_Opening_Status, ''),
-            numberOfPositions: Number(job.Number_of_Positions) || 1,
-            createdTime: zohoStr(job.Created_Time, ''),
-            city: zohoStr(job.City, ''),
-            assignedRecruiter: zohoStr(job.Assigned_Recruiter, 'Unassigned'),
-            requiredSkills: zohoStr(job.Required_Skills, ''),
-            opsManager,
-          });
-        }
+        const info: JobInfo = {
+          id,
+          postingTitle: title,
+          clientName: client,
+          priority: zohoStr(job.Priority1, 'N/A'),
+          status: zohoStr(job.Job_Opening_Status, ''),
+          numberOfPositions: Number(job.Number_of_Positions) || 1,
+          createdTime: zohoStr(job.Created_Time, ''),
+          city: zohoStr(job.City, ''),
+          assignedRecruiter: zohoStr(job.Assigned_Recruiter, 'Unassigned'),
+          requiredSkills: zohoStr(job.Required_Skills, ''),
+          opsManager,
+        };
+        byId.set(id, info);
+        byTitle.set(title, info);
+        titleCount.set(title, (titleCount.get(title) || 0) + 1);
       }
     }
     hasMore = data.info?.more_records ?? false;
     page++;
     if (page > 25) break;
   }
-  return jobMap;
+  const titlesWithMultiple = new Set<string>();
+  for (const [t, n] of titleCount) if (n > 1) titlesWithMultiple.add(t);
+  return { byId, byTitle, titlesWithMultiple };
+}
+
+// Resolve the JobInfo for a given application by preferring the lookup id,
+// falling back to title only when the title is unambiguous.
+function resolveJobInfo(app: { Job_Opening?: any; Job_Opening_Name?: string }, maps: JobInfoMaps): JobInfo | undefined {
+  // 1. Prefer Job_Opening lookup (gives us the exact id)
+  const lookupId = app.Job_Opening?.id || (Array.isArray(app.Job_Opening) ? app.Job_Opening[0]?.id : undefined);
+  if (lookupId && maps.byId.has(lookupId)) return maps.byId.get(lookupId);
+  // 2. Title fallback only if it's unambiguous (single opening with that title)
+  const title = app.Job_Opening_Name;
+  if (title && !maps.titlesWithMultiple.has(title)) return maps.byTitle.get(title);
+  return undefined;
 }
 
 function daysBetween(date1: Date, date2: Date): number {
@@ -538,7 +571,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!recruiterCandidatesMap[recruiter]) recruiterCandidatesMap[recruiter] = [];
       const app = latestAppByName.get(fullName);
       const jobTitle = app?.Job_Opening_Name || 'Unknown';
-      const clientName = (jobTitle && jobInfoMap.get(jobTitle)?.clientName) || (app ? zohoStr(app.Client_Name) : 'Unknown');
+      // Prefer the application's own Client_Name (per-application source of truth);
+      // only fall back to job-info lookup if the application has no client set.
+      const clientName = (app ? zohoStr(app.Client_Name, '') : '') || resolveJobInfo(app || {}, jobInfoMap)?.clientName || 'Unknown';
       recruiterCandidatesMap[recruiter].push({
         candidateName: fullName || 'Unknown',
         jobTitle,
@@ -690,7 +725,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return {
           candidateName: fullName,
           jobTitle: app.Job_Opening_Name || 'Unknown',
-          clientName: (app.Job_Opening_Name && jobInfoMap.get(app.Job_Opening_Name)?.clientName) || zohoStr(app.Client_Name),
+          // Prefer the application's own Client_Name (per-application source of truth);
+          // only fall back to job-info lookup if the application has no client set.
+          clientName: zohoStr(app.Client_Name, '') || resolveJobInfo(app, jobInfoMap)?.clientName || 'Unknown',
           recruiter: getRecruiter(app),
           candidateRecruiter: allCandidateRecruiters.get(fullName) || 'Unassigned',
           interviewStage: getInterviewStageLabel(app.Application_Status || '') || 'Unknown',
@@ -707,29 +744,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       interviewStageCounts[item.interviewStage] = (interviewStageCounts[item.interviewStage] || 0) + 1;
     });
 
-    // Build interview count per job from the interviewPipeline
-    const interviewCountByJob = new Map<string, number>();
-    interviewPipeline.forEach((item) => {
-      const jt = item.jobTitle;
-      interviewCountByJob.set(jt, (interviewCountByJob.get(jt) || 0) + 1);
+    // Build interview count per job, keyed by Job Opening id so duplicate-title
+    // openings (e.g. multiple clients with "Sales Executive") are kept separate.
+    const interviewCountByJobId = new Map<string, number>();
+    const interviewCountByTitle = new Map<string, number>();
+    interviewApps.forEach((app) => {
+      const jid = app.Job_Opening?.id || (Array.isArray(app.Job_Opening) ? app.Job_Opening[0]?.id : undefined);
+      if (jid) interviewCountByJobId.set(jid, (interviewCountByJobId.get(jid) || 0) + 1);
+      const t = app.Job_Opening_Name || '';
+      if (t) interviewCountByTitle.set(t, (interviewCountByTitle.get(t) || 0) + 1);
     });
 
     // =============================================
     // 11. OPEN JOBS REPORT
     // =============================================
-    // Group all applications by job title for fast lookup
-    const appsByJob = new Map<string, typeof applications>();
+    // Group all applications by Job Opening ID (preferred) so two distinct
+    // openings with the same Posting_Title don't get bucketed together.
+    const appsByJobId = new Map<string, typeof applications>();
+    const appsByTitle = new Map<string, typeof applications>();
     for (const app of applications) {
-      const jobTitle = app.Job_Opening_Name || '';
-      if (!jobTitle) continue;
-      if (!appsByJob.has(jobTitle)) appsByJob.set(jobTitle, []);
-      appsByJob.get(jobTitle)!.push(app);
+      const jobId = app.Job_Opening?.id || (Array.isArray(app.Job_Opening) ? app.Job_Opening[0]?.id : undefined);
+      if (jobId) {
+        if (!appsByJobId.has(jobId)) appsByJobId.set(jobId, []);
+        appsByJobId.get(jobId)!.push(app);
+      }
+      const title = app.Job_Opening_Name || '';
+      if (title) {
+        if (!appsByTitle.has(title)) appsByTitle.set(title, []);
+        appsByTitle.get(title)!.push(app);
+      }
     }
 
-    const openJobsReport = [...jobInfoMap.entries()]
-      .filter(([, info]) => info.status.toLowerCase() === 'in-progress')
-      .map(([jobTitle, info]) => {
-        const jobApps = appsByJob.get(jobTitle) || [];
+    const openJobsReport = [...jobInfoMap.byId.values()]
+      .filter((info) => info.status.toLowerCase() === 'in-progress')
+      .map((info) => {
+        const jobTitle = info.postingTitle;
+        // Prefer apps matched by Job_Opening id; only fall back to title bucket when
+        // we have no id-keyed apps AND the title is unambiguous (no duplicate titles)
+        let jobApps = appsByJobId.get(info.id) || [];
+        if (jobApps.length === 0 && !jobInfoMap.titlesWithMultiple.has(jobTitle)) {
+          jobApps = appsByTitle.get(jobTitle) || [];
+        }
         const submittedCandidates = jobApps
           .filter((app) => getMaxFunnelStage(app.Application_Status || '') >= 1)
           .map((app) => ({
@@ -743,7 +798,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }))
           .sort((a, b) => b.funnelStage - a.funnelStage || a.candidateName.localeCompare(b.candidateName));
 
+        const idCount = interviewCountByJobId.get(info.id);
+        const interviewCount = (idCount !== undefined)
+          ? idCount
+          : (!jobInfoMap.titlesWithMultiple.has(jobTitle) ? (interviewCountByTitle.get(jobTitle) || 0) : 0);
+
         return {
+          jobId: info.id,
           jobTitle,
           clientName: info.clientName || 'Unknown',
           priorityTier: info.priority || 'N/A',
@@ -754,7 +815,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           daysOpen: info.createdTime ? daysBetween(new Date(info.createdTime), now) : 0,
           totalApplications: jobApps.length,
           totalSubmissions: submittedCandidates.length,
-          interviewCount: interviewCountByJob.get(jobTitle) || 0,
+          interviewCount,
           submittedCandidates,
         };
       })
@@ -795,7 +856,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       a.activeRoles++;
       a.totalSubmissions += job.totalSubmissions || 0;
       a.totalInterviews += job.interviewCount || 0;
-      const info = jobInfoMap.get(job.jobTitle);
+      const info = jobInfoMap.byId.get(job.jobId);
       const om = info?.opsManager || 'Unassigned';
       a.opsManagerCounts[om] = (a.opsManagerCounts[om] || 0) + 1;
       if (job.priorityTier === 'Tier 1') a.tier1++;
@@ -853,7 +914,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const status = app?.Application_Status || '';
       const maxStage = getMaxFunnelStage(status);
       const jobTitle = app?.Job_Opening_Name || 'Unknown';
-      const clientName = (jobTitle !== 'Unknown' && jobInfoMap.get(jobTitle)?.clientName) || (app ? zohoStr(app.Client_Name) : '') || '';
+      // Prefer the application's own Client_Name; fall back to job-info lookup only if missing
+      const clientName = (app ? zohoStr(app.Client_Name, '') : '') || (app ? resolveJobInfo(app, jobInfoMap)?.clientName : '') || '';
 
       if (!formSubmissionStats[recruiter]) {
         formSubmissionStats[recruiter] = { totalFormSubmissions: 0, submittedToClient: 0, inInterview: 0, offers: 0, hires: 0, rejected: 0, active: 0, candidates: [] };
