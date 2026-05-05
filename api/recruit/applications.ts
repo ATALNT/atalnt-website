@@ -125,7 +125,9 @@ interface ZohoApplication {
   Full_Name: string;
   Job_Opening_Name: string;
   Job_Opening?: any;       // Lookup object: { id, name } — used to disambiguate jobs with duplicate titles
-  Client_Name: any;
+  $Job_Opening_Id?: string; // Zoho helper: the Job Opening's record id (preferred for id-based resolution)
+  Client: any;             // The real customer name (e.g. "Bettaway", "Landstar"). Plain-text field on Application.
+  Client_Name: any;        // MISLEADING NAME: this is a lookup to the Departments module, often "Atalnt Recruiting". Do not use as customer name.
   Application_Status: string;
   Created_Time: string;
   Updated_On: string;     // This is the actual "Modified Time" field in Zoho Recruit
@@ -258,7 +260,7 @@ async function fetchApplications(accessToken: string, dateFrom?: string, dateTo?
   let page = 1;
   let hasMore = true;
   while (hasMore) {
-    const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Full_Name,Job_Opening_Name,Job_Opening,Client_Name,Application_Status,Created_Time,Updated_On,Last_Activity_Time,Application_Owner,Account_Manager,Assigned_Recruiter&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
+    const url = `https://recruit.zoho.com/recruit/v2/Applications?fields=Full_Name,Job_Opening_Name,Job_Opening,Client,Client_Name,Application_Status,Created_Time,Updated_On,Last_Activity_Time,Application_Owner,Account_Manager,Assigned_Recruiter&page=${page}&per_page=200&sort_by=Created_Time&sort_order=desc`;
     const response = await fetch(url, { headers: { Authorization: `Zoho-oauthtoken ${accessToken}`, 'Content-Type': 'application/json' } });
     if (!response.ok) { if (response.status === 204) break; throw new Error(`Zoho Recruit API error: ${response.status}`); }
     const data = await response.json();
@@ -352,14 +354,33 @@ async function fetchJobInfoMap(accessToken: string): Promise<JobInfoMaps> {
 
 // Resolve the JobInfo for a given application by preferring the lookup id,
 // falling back to title only when the title is unambiguous.
-function resolveJobInfo(app: { Job_Opening?: any; Job_Opening_Name?: string }, maps: JobInfoMaps): JobInfo | undefined {
-  // 1. Prefer Job_Opening lookup (gives us the exact id)
-  const lookupId = app.Job_Opening?.id || (Array.isArray(app.Job_Opening) ? app.Job_Opening[0]?.id : undefined);
+function resolveJobInfo(app: any, maps: JobInfoMaps): JobInfo | undefined {
+  // 1. Prefer the Zoho-provided $Job_Opening_Id helper (always present on every app)
+  const helperId = app?.$Job_Opening_Id;
+  if (helperId && maps.byId.has(String(helperId))) return maps.byId.get(String(helperId));
+  // 2. Try Job_Opening lookup if it's been requested as a field
+  const lookupId = app?.Job_Opening?.id || (Array.isArray(app?.Job_Opening) ? app.Job_Opening[0]?.id : undefined);
   if (lookupId && maps.byId.has(lookupId)) return maps.byId.get(lookupId);
-  // 2. Title fallback only if it's unambiguous (single opening with that title)
-  const title = app.Job_Opening_Name;
+  // 3. Title fallback only if it's unambiguous (single opening with that title)
+  const title = app?.Job_Opening_Name;
   if (title && !maps.titlesWithMultiple.has(title)) return maps.byTitle.get(title);
   return undefined;
+}
+
+// Best-effort customer name for an application:
+//   1. Application.Client (plain-text field — what the Zoho UI's "CLIENT" column shows)
+//   2. Linked Job Opening's Client field (via Job Opening lookup id)
+//   3. Application.Client_Name string (last resort — note: this is actually the Department lookup,
+//      often equals "Atalnt Recruiting" — only return as final fallback when nothing else worked)
+function resolveClientName(app: any, maps: JobInfoMaps): string {
+  if (!app) return 'Unknown';
+  const direct = zohoStr(app.Client, '');
+  if (direct) return direct;
+  const fromJob = resolveJobInfo(app, maps)?.clientName;
+  if (fromJob) return fromJob;
+  const dept = zohoStr(app.Client_Name, '');
+  if (dept) return dept;
+  return 'Unknown';
 }
 
 function daysBetween(date1: Date, date2: Date): number {
@@ -495,7 +516,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .map((app) => ({
         candidateName: app.Full_Name || 'Unknown',
         status: app.Application_Status,
-        clientName: resolveJobInfo(app, jobInfoMap)?.clientName || zohoStr(app.Client_Name, '') || 'Unknown',
+        clientName: resolveClientName(app, jobInfoMap),
         jobTitle: app.Job_Opening_Name || 'Unknown',
         recruiter: getRecruiter(app),
         daysSinceUpdate: daysBetween(new Date(app.Updated_On), now),
@@ -575,7 +596,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // ("Atalnt Recruiting") rather than the actual end customer. The Job
       // Opening's Client field is the real customer, so resolve via the
       // Job_Opening lookup id first and only fall back to Application.Client_Name.
-      const clientName = resolveJobInfo(app || {}, jobInfoMap)?.clientName || (app ? zohoStr(app.Client_Name, '') : '') || 'Unknown';
+      const clientName = resolveClientName(app, jobInfoMap);
       recruiterCandidatesMap[recruiter].push({
         candidateName: fullName || 'Unknown',
         jobTitle,
@@ -628,7 +649,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }> = {};
 
     applications.forEach((app) => {
-      const client = resolveJobInfo(app, jobInfoMap)?.clientName || zohoStr(app.Client_Name, '') || 'Unknown';
+      const client = resolveClientName(app, jobInfoMap);
       if (!clientStats[client]) {
         clientStats[client] = { total: 0, reachedSubmission: 0, reachedInterview: 0, hires: 0, rejected: 0, active: 0 };
       }
@@ -727,11 +748,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return {
           candidateName: fullName,
           jobTitle: app.Job_Opening_Name || 'Unknown',
-          // Resolve via Job_Opening lookup id first — Application.Client_Name on
-          // Zoho often equals the agency itself ("Atalnt Recruiting") rather
-          // than the actual customer. The Job Opening's Client field is the
-          // real customer.
-          clientName: resolveJobInfo(app, jobInfoMap)?.clientName || zohoStr(app.Client_Name, '') || 'Unknown',
+          clientName: resolveClientName(app, jobInfoMap),
           recruiter: getRecruiter(app),
           candidateRecruiter: allCandidateRecruiters.get(fullName) || 'Unassigned',
           interviewStage: getInterviewStageLabel(app.Application_Status || '') || 'Unknown',
@@ -918,8 +935,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const status = app?.Application_Status || '';
       const maxStage = getMaxFunnelStage(status);
       const jobTitle = app?.Job_Opening_Name || 'Unknown';
-      // Job Opening's Client is the real customer; Application.Client_Name often = agency
-      const clientName = (app ? resolveJobInfo(app, jobInfoMap)?.clientName : '') || (app ? zohoStr(app.Client_Name, '') : '') || '';
+      const clientName = app ? resolveClientName(app, jobInfoMap) : '';
 
       if (!formSubmissionStats[recruiter]) {
         formSubmissionStats[recruiter] = { totalFormSubmissions: 0, submittedToClient: 0, inInterview: 0, offers: 0, hires: 0, rejected: 0, active: 0, candidates: [] };
