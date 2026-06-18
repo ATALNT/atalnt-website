@@ -1,7 +1,10 @@
 // ============================================
-// GET /api/instantly/cron-health-score — Daily Health Score Auto-Manager
-// Fetches all Instantly accounts, sets daily_limit=0 for unhealthy
-// accounts (keeps warmup active), restores for healthy ones.
+// GET /api/instantly/cron-health-score — Health Score Auto-Manager
+// Fetches ALL Instantly accounts and enforces the rule:
+//   warmup score <  97  -> PAUSE the account (stops sending, warmup continues)
+//   warmup score >= 97  -> RESUME the account and set daily_limit to 20
+// Pause/resume is the only reliable on/off switch — daily_limit:0 is ignored
+// by the Instantly API. Runs on a schedule (see vercel.json) a few times a day.
 // ============================================
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -83,6 +86,38 @@ async function fetchAllAccounts(apiKey: string): Promise<InstantlyAccount[]> {
   return allAccounts;
 }
 
+// Pause an account (stops campaign sending, warmup continues). Sets status=2.
+// NOTE: daily_limit:0 does NOT work — the Instantly API silently ignores it and
+// keeps the limit at its previous value. The pause/resume endpoints are the only
+// reliable on/off switch.
+async function pauseAccount(email: string, headers: Record<string, string>): Promise<boolean> {
+  const resp = await fetch(`https://api.instantly.ai/api/v2/accounts/${encodeURIComponent(email)}/pause`, {
+    method: 'POST',
+    headers,
+    body: '{}',
+  });
+  if (!resp.ok) {
+    console.error(`Failed to pause ${email}: ${resp.status} ${await resp.text()}`);
+    return false;
+  }
+  return true;
+}
+
+// Resume an account (re-enables campaign sending). Sets status=1.
+async function resumeAccount(email: string, headers: Record<string, string>): Promise<boolean> {
+  const resp = await fetch(`https://api.instantly.ai/api/v2/accounts/${encodeURIComponent(email)}/resume`, {
+    method: 'POST',
+    headers,
+    body: '{}',
+  });
+  if (!resp.ok) {
+    console.error(`Failed to resume ${email}: ${resp.status} ${await resp.text()}`);
+    return false;
+  }
+  return true;
+}
+
+// Ensure daily_limit is set to the desired sending volume (only non-zero values persist).
 async function setDailyLimit(email: string, limit: number, headers: Record<string, string>): Promise<void> {
   const resp = await fetch(`https://api.instantly.ai/api/v2/accounts/${encodeURIComponent(email)}`, {
     method: 'PATCH',
@@ -117,44 +152,66 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     'Content-Type': 'application/json',
   };
 
+  // status codes: 1 = active (sending), 2 = paused
+  const STATUS_ACTIVE = 1;
+  const STATUS_PAUSED = 2;
+
   try {
     const accounts = await fetchAllAccounts(apiKey);
 
-    let throttledCount = 0;
-    let restoredCount = 0;
-    let skippedCount = 0;
-    const throttledEmails: string[] = [];
-    const restoredEmails: string[] = [];
+    // Decide the action for each account from its health score:
+    //   score <  97  -> pause (turn off sending; warmup keeps running)
+    //   score >= 97  -> resume + ensure daily_limit is set
+    const toPause = accounts.filter(
+      (a) => a.stat_warmup_score != null && a.stat_warmup_score < MIN_SCORE && a.status !== STATUS_PAUSED
+    );
+    const toResume = accounts.filter(
+      (a) => a.stat_warmup_score != null && a.stat_warmup_score >= MIN_SCORE && a.status === STATUS_PAUSED
+    );
+    const noScore = accounts.filter((a) => a.stat_warmup_score == null);
 
-    for (const account of accounts) {
-      const { email, daily_limit, stat_warmup_score: healthScore } = account;
+    const pausedEmails: string[] = [];
+    const resumedEmails: string[] = [];
 
-      if (healthScore == null) {
-        skippedCount++;
-        continue;
-      }
+    // Run actions in parallel batches so the job covers all accounts within the timeout.
+    // (The old version did one sequential PATCH per account and could time out partway,
+    // leaving most unhealthy accounts still sending.)
+    const BATCH = 15;
 
-      if (healthScore < MIN_SCORE && daily_limit !== 0) {
-        await setDailyLimit(email, 0, headers);
-        throttledCount++;
-        throttledEmails.push(`${email} (score: ${healthScore})`);
-      } else if (healthScore >= MIN_SCORE && daily_limit === 0) {
-        await setDailyLimit(email, dailyLimit, headers);
-        restoredCount++;
-        restoredEmails.push(`${email} (score: ${healthScore})`);
-      } else {
-        skippedCount++;
-      }
+    for (let i = 0; i < toPause.length; i += BATCH) {
+      const batch = toPause.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map(async (a) => {
+          if (await pauseAccount(a.email, headers)) {
+            pausedEmails.push(`${a.email} (score: ${a.stat_warmup_score})`);
+          }
+        })
+      );
+    }
+
+    for (let i = 0; i < toResume.length; i += BATCH) {
+      const batch = toResume.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map(async (a) => {
+          const ok = await resumeAccount(a.email, headers);
+          if (ok) {
+            await setDailyLimit(a.email, dailyLimit, headers);
+            resumedEmails.push(`${a.email} (score: ${a.stat_warmup_score})`);
+          }
+        })
+      );
     }
 
     const result = {
       total: accounts.length,
-      throttled_to_zero: throttledCount,
-      restored_sends: restoredCount,
-      skipped: skippedCount,
+      paused: pausedEmails.length,
+      resumed: resumedEmails.length,
+      already_correct: accounts.length - toPause.length - toResume.length - noScore.length,
+      no_score_skipped: noScore.length,
+      min_score: MIN_SCORE,
       daily_limit_setting: dailyLimit,
-      throttled_emails: throttledEmails,
-      restored_emails: restoredEmails,
+      paused_emails: pausedEmails,
+      resumed_emails: resumedEmails,
       timestamp: new Date().toISOString(),
     };
 

@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/instantly/cron-health-score",
-      "schedule": "0 0 * * *"
+      "schedule": "0 0,8,16 * * *"
     },
     {
       "path": "/api/instantly/cron-reply-manager",
