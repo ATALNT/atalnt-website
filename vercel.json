@@ -15,6 +15,10 @@
     {
       "path": "/api/instantly/cron-prune-leads",
       "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/instantly/cron-bounce-guard",
+      "schedule": "0 */2 * * *"
     }
   ],
   "rewrites": [
