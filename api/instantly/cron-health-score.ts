@@ -169,9 +169,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       (a) => a.stat_warmup_score != null && a.stat_warmup_score >= MIN_SCORE && a.status === STATUS_PAUSED
     );
     const noScore = accounts.filter((a) => a.stat_warmup_score == null);
+    // Healthy + already active but daily_limit has drifted (an old 30 left over,
+    // or a 0 from a throttle/disconnect): pin it back to the target. The resume
+    // path only sets the limit on accounts it UN-pauses, so without this an
+    // already-active account keeps a stale limit forever.
+    const toFixLimit = accounts.filter(
+      (a) =>
+        a.stat_warmup_score != null &&
+        a.stat_warmup_score >= MIN_SCORE &&
+        a.status === STATUS_ACTIVE &&
+        a.daily_limit !== dailyLimit
+    );
 
     const pausedEmails: string[] = [];
     const resumedEmails: string[] = [];
+    const limitFixedEmails: string[] = [];
 
     // Run actions in parallel batches so the job covers all accounts within the timeout.
     // (The old version did one sequential PATCH per account and could time out partway,
@@ -202,16 +214,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
     }
 
+    // Enforce the target daily_limit on healthy, already-active accounts whose
+    // limit drifted. Only touches the drifted ones, so it stays cheap.
+    for (let i = 0; i < toFixLimit.length; i += BATCH) {
+      const batch = toFixLimit.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map(async (a) => {
+          await setDailyLimit(a.email, dailyLimit, headers);
+          limitFixedEmails.push(`${a.email} (was: ${a.daily_limit})`);
+        })
+      );
+    }
+
     const result = {
       total: accounts.length,
       paused: pausedEmails.length,
       resumed: resumedEmails.length,
-      already_correct: accounts.length - toPause.length - toResume.length - noScore.length,
+      limit_fixed: limitFixedEmails.length,
+      already_correct: accounts.length - toPause.length - toResume.length - toFixLimit.length - noScore.length,
       no_score_skipped: noScore.length,
       min_score: MIN_SCORE,
       daily_limit_setting: dailyLimit,
       paused_emails: pausedEmails,
       resumed_emails: resumedEmails,
+      limit_fixed_emails: limitFixedEmails,
       timestamp: new Date().toISOString(),
     };
 
