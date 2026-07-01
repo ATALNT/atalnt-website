@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/instantly/cron-health-score",
-      "schedule": "0 */3 * * *"
+      "schedule": "0 11 * * *"
     },
     {
       "path": "/api/instantly/cron-reply-manager",
@@ -18,11 +18,17 @@
     },
     {
       "path": "/api/instantly/cron-bounce-guard",
-      "schedule": "0 */2 * * *"
+      "schedule": "0 13 * * *"
     }
   ],
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }
