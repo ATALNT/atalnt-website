@@ -12,11 +12,11 @@
 // ============================================
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import healthScore from '../_lib/crons/health-score';
-import pruneLeads from '../_lib/crons/prune-leads';
-import bounceGuard from '../_lib/crons/bounce-guard';
-import replyManager from '../_lib/crons/reply-manager';
-import leadResponder from '../_lib/crons/lead-responder';
+import healthScore from '../_lib/crons/health-score.js';
+import pruneLeads from '../_lib/crons/prune-leads.js';
+import bounceGuard from '../_lib/crons/bounce-guard.js';
+import replyManager from '../_lib/crons/reply-manager.js';
+import leadResponder from '../_lib/crons/lead-responder.js';
 
 export const maxDuration = 300;
 
