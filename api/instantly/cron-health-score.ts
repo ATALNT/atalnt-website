@@ -24,65 +24,31 @@ interface InstantlyListResponse {
   next_starting_after?: string;
 }
 
-async function fetchWithSearch(search: string, headers: Record<string, string>, seen: Set<string>, allAccounts: InstantlyAccount[]): Promise<void> {
-  let startAfter: string | undefined;
-  while (true) {
-    const url = startAfter
-      ? `https://api.instantly.ai/api/v2/accounts?limit=100&search=${encodeURIComponent(search)}&starting_after=${encodeURIComponent(startAfter)}`
-      : `https://api.instantly.ai/api/v2/accounts?limit=100&search=${encodeURIComponent(search)}`;
-
-    const resp = await fetch(url, { method: 'GET', headers });
-    if (!resp.ok) {
-      // Skip on rate limit or transient errors for individual searches
-      console.warn(`Search '${search}' failed: ${resp.status}`);
-      break;
-    }
-
-    const data: InstantlyListResponse = await resp.json();
-    const items = data.items || [];
-    for (const item of items) {
-      if (!seen.has(item.email)) {
-        seen.add(item.email);
-        allAccounts.push(item);
-      }
-    }
-
-    if (data.next_starting_after) {
-      startAfter = data.next_starting_after;
-    } else {
-      break;
-    }
-  }
-}
-
 async function fetchAllAccounts(apiKey: string): Promise<InstantlyAccount[]> {
   const headers = {
     Authorization: `Bearer ${apiKey}`,
     'Content-Type': 'application/json',
   };
+  // Straight pagination via next_starting_after reliably returns every account.
+  // (The old two-letter-search workaround silently skipped accounts, so
+  // low-health / limit-drifted mailboxes were never paused or re-capped.)
   const allAccounts: InstantlyAccount[] = [];
   const seen = new Set<string>();
-
-  // Instantly API v2 pagination is broken — it skips accounts.
-  // Workaround: search by two-letter combos (aa-zz) to get all accounts.
-  // Run in parallel batches to stay within Vercel's 60s timeout.
-  const letters = 'abcdefghijklmnopqrstuvwxyz';
-  const searches: string[] = [];
-  for (const a of letters) {
-    for (const b of letters) {
-      searches.push(a + b);
+  let startAfter: string | undefined;
+  while (true) {
+    const url = `https://api.instantly.ai/api/v2/accounts?limit=100${startAfter ? `&starting_after=${encodeURIComponent(startAfter)}` : ''}`;
+    const resp = await fetch(url, { method: 'GET', headers });
+    if (!resp.ok) break;
+    const data: InstantlyListResponse = await resp.json();
+    for (const item of data.items || []) {
+      if (!seen.has(item.email)) {
+        seen.add(item.email);
+        allAccounts.push(item);
+      }
     }
+    if (data.next_starting_after) startAfter = data.next_starting_after;
+    else break;
   }
-  for (let i = 0; i <= 9; i++) {
-    searches.push(String(i));
-  }
-
-  const BATCH_SIZE = 20;
-  for (let i = 0; i < searches.length; i += BATCH_SIZE) {
-    const batch = searches.slice(i, i + BATCH_SIZE);
-    await Promise.all(batch.map(s => fetchWithSearch(s, headers, seen, allAccounts)));
-  }
-
   return allAccounts;
 }
 
@@ -169,17 +135,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       (a) => a.stat_warmup_score != null && a.stat_warmup_score >= MIN_SCORE && a.status === STATUS_PAUSED
     );
     const noScore = accounts.filter((a) => a.stat_warmup_score == null);
-    // Healthy + already active but daily_limit has drifted (an old 30 left over,
-    // or a 0 from a throttle/disconnect): pin it back to the target. The resume
-    // path only sets the limit on accounts it UN-pauses, so without this an
-    // already-active account keeps a stale limit forever.
-    const toFixLimit = accounts.filter(
-      (a) =>
-        a.stat_warmup_score != null &&
-        a.stat_warmup_score >= MIN_SCORE &&
-        a.status === STATUS_ACTIVE &&
-        a.daily_limit !== dailyLimit
-    );
+    // HARD CAP: every account whose daily_limit has drifted off the target gets
+    // pinned back, regardless of health or pause state. This is critical because
+    // Instantly does NOT honor a daily_limit of 0 as "off" — it ignores the 0 and
+    // sends its own default (~30/day). The only way to guarantee "never more than
+    // <dailyLimit> per mailbox" is to keep every account pinned to a real, non-zero
+    // value on every run.
+    const toFixLimit = accounts.filter((a) => a.daily_limit !== dailyLimit);
 
     const pausedEmails: string[] = [];
     const resumedEmails: string[] = [];
