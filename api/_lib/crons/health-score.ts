@@ -119,42 +119,58 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
 
   // status codes: 1 = active (sending), 2 = paused
+  const HEALTHY_SCORE = 97;
+  const STATUS_PAUSED = 2;
   try {
     const accounts = await fetchAllAccounts(apiKey);
 
-    // We deliberately do NOT pause accounts for low health anymore. Pausing an
-    // account in Instantly also STOPS its warmup (verified: paused mailboxes send
-    // 0 warmup emails and their health score freezes), so pausing an unhealthy
-    // account traps it instead of letting it heal — the opposite of the goal.
-    // Deliverability is protected instead by: (1) the hard per-mailbox daily cap
-    // enforced below, (2) warmup running on every active account, and (3) the
-    // bounce-guard cron pausing whole campaigns that bounce too much.
-    //
-    // HARD CAP: Instantly does NOT honor daily_limit:0 as "off" — it ignores the
-    // 0 and sends its own default (~30/day). So the only way to guarantee "never
-    // more than <dailyLimit> per mailbox" is to keep every account pinned to a
-    // real, non-zero value on every run.
-    const toFixLimit = accounts.filter((a) => a.daily_limit !== dailyLimit);
+    // The rule (NEVER pause — pausing an account halts its warmup, which freezes
+    // an unhealthy mailbox instead of letting it heal):
+    //   health >= 97  -> daily_limit = <dailyLimit>  (send + warm)
+    //   health <= 96  -> daily_limit = 0             (warm only, no cold sending)
+    // Warmup keeps running at any daily_limit including 0, so low-health mailboxes
+    // recover instead of freezing. Also un-pause anything still paused.
+    const desiredLimit = (score: number | null | undefined) =>
+      (score ?? 0) >= HEALTHY_SCORE ? dailyLimit : 0;
 
-    const limitFixedEmails: string[] = [];
+    const toResume = accounts.filter((a) => a.status === STATUS_PAUSED);
+    const toFixLimit = accounts.filter(
+      (a) => (a.daily_limit ?? -1) !== desiredLimit(a.stat_warmup_score)
+    );
+
+    const resumedEmails: string[] = [];
+    const limitSetEmails: string[] = [];
     const BATCH = 15;
+
+    for (let i = 0; i < toResume.length; i += BATCH) {
+      const batch = toResume.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map(async (a) => {
+          if (await resumeAccount(a.email, headers)) resumedEmails.push(a.email);
+        })
+      );
+    }
+
     for (let i = 0; i < toFixLimit.length; i += BATCH) {
       const batch = toFixLimit.slice(i, i + BATCH);
       await Promise.all(
         batch.map(async (a) => {
-          await setDailyLimit(a.email, dailyLimit, headers);
-          limitFixedEmails.push(`${a.email} (was: ${a.daily_limit})`);
+          const lim = desiredLimit(a.stat_warmup_score);
+          await setDailyLimit(a.email, lim, headers);
+          limitSetEmails.push(`${a.email} -> ${lim} (score ${a.stat_warmup_score})`);
         })
       );
     }
 
     const result = {
       total: accounts.length,
-      limit_fixed: limitFixedEmails.length,
-      already_correct: accounts.length - toFixLimit.length,
+      resumed: resumedEmails.length,
+      limit_set: limitSetEmails.length,
+      healthy_sending: accounts.filter((a) => (a.stat_warmup_score ?? 0) >= HEALTHY_SCORE).length,
+      warming_at_zero: accounts.filter((a) => (a.stat_warmup_score ?? 0) < HEALTHY_SCORE).length,
+      healthy_score: HEALTHY_SCORE,
       daily_limit_setting: dailyLimit,
-      limit_fixed_emails: limitFixedEmails,
-      policy: 'enforce daily cap only — NO health-based pausing (pausing halts warmup)',
+      policy: 'never pause; health>=97 -> daily_limit 20, health<=96 -> daily_limit 0 (warmup keeps running)',
       timestamp: new Date().toISOString(),
     };
 
