@@ -120,76 +120,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // status codes: 1 = active (sending), 2 = paused
   const HEALTHY_SCORE = 97;
-  const STATUS_ACTIVE = 1;
   const STATUS_PAUSED = 2;
   try {
     const accounts = await fetchAllAccounts(apiKey);
 
-    // The rule (PAUSE/RESUME — verified 2026-07-08 to be the only reliable
-    // on/off switch):
-    //   health >= 97  -> ACTIVE + daily_limit 20   (send + warm)
-    //   health <= 96  -> PAUSED                     (no cold sending)
-    // Two facts this policy depends on, both tested empirically:
-    //   1. daily_limit:0 is IGNORED by Instantly — an active account at limit 0
-    //      still sends its ~30/day default. So 0 does NOT stop sending.
-    //   2. Pausing an account (status=2) leaves warmup_status=1 untouched, so
-    //      warmup KEEPS running on paused mailboxes and they still heal.
-    // Never send more than daily_limit (20) from any mailbox, ever.
-    const isHealthy = (a: InstantlyAccount) => (a.stat_warmup_score ?? 0) >= HEALTHY_SCORE;
+    // The rule (NEVER pause — pausing an account halts its warmup, which freezes
+    // an unhealthy mailbox instead of letting it heal):
+    //   health >= 97  -> daily_limit = <dailyLimit>  (send + warm)
+    //   health <= 96  -> daily_limit = 0             (warm only, no cold sending)
+    // Warmup keeps running at any daily_limit including 0, so low-health mailboxes
+    // recover instead of freezing. Also un-pause anything still paused.
+    const desiredLimit = (score: number | null | undefined) =>
+      (score ?? 0) >= HEALTHY_SCORE ? dailyLimit : 0;
 
-    const toPause = accounts.filter((a) => !isHealthy(a) && a.status === STATUS_ACTIVE);
-    const toResume = accounts.filter((a) => isHealthy(a) && a.status === STATUS_PAUSED);
-    const toFixLimit = accounts.filter((a) => isHealthy(a) && (a.daily_limit ?? -1) !== dailyLimit);
+    const toResume = accounts.filter((a) => a.status === STATUS_PAUSED);
+    const toFixLimit = accounts.filter(
+      (a) => (a.daily_limit ?? -1) !== desiredLimit(a.stat_warmup_score)
+    );
 
-    const pausedEmails: string[] = [];
     const resumedEmails: string[] = [];
     const limitSetEmails: string[] = [];
     const BATCH = 15;
 
-    // Unhealthy + sending -> pause (stops cold sending; warmup continues)
-    for (let i = 0; i < toPause.length; i += BATCH) {
-      const batch = toPause.slice(i, i + BATCH);
-      await Promise.all(
-        batch.map(async (a) => {
-          if (await pauseAccount(a.email, headers)) pausedEmails.push(`${a.email} (score ${a.stat_warmup_score})`);
-        })
-      );
-    }
-
-    // Healthy + paused -> resume, then ensure the 20/day cap
     for (let i = 0; i < toResume.length; i += BATCH) {
       const batch = toResume.slice(i, i + BATCH);
       await Promise.all(
         batch.map(async (a) => {
-          if (await resumeAccount(a.email, headers)) {
-            await setDailyLimit(a.email, dailyLimit, headers);
-            resumedEmails.push(`${a.email} (score ${a.stat_warmup_score})`);
-          }
+          if (await resumeAccount(a.email, headers)) resumedEmails.push(a.email);
         })
       );
     }
 
-    // Healthy + active but limit drifted -> snap back to 20 (hard cap)
     for (let i = 0; i < toFixLimit.length; i += BATCH) {
       const batch = toFixLimit.slice(i, i + BATCH);
       await Promise.all(
         batch.map(async (a) => {
-          await setDailyLimit(a.email, dailyLimit, headers);
-          limitSetEmails.push(`${a.email} (was ${a.daily_limit})`);
+          const lim = desiredLimit(a.stat_warmup_score);
+          await setDailyLimit(a.email, lim, headers);
+          limitSetEmails.push(`${a.email} -> ${lim} (score ${a.stat_warmup_score})`);
         })
       );
     }
 
     const result = {
       total: accounts.length,
-      paused: pausedEmails.length,
       resumed: resumedEmails.length,
       limit_set: limitSetEmails.length,
-      healthy_sending: accounts.filter(isHealthy).length,
-      warming_paused: accounts.filter((a) => !isHealthy(a)).length,
+      healthy_sending: accounts.filter((a) => (a.stat_warmup_score ?? 0) >= HEALTHY_SCORE).length,
+      warming_at_zero: accounts.filter((a) => (a.stat_warmup_score ?? 0) < HEALTHY_SCORE).length,
       healthy_score: HEALTHY_SCORE,
       daily_limit_setting: dailyLimit,
-      policy: 'pause <=96 (warmup keeps running), resume + cap 20/day for >=97; daily_limit:0 is ignored by Instantly so never used',
+      policy: 'never pause; health>=97 -> daily_limit 20, health<=96 -> daily_limit 0 (warmup keeps running)',
       timestamp: new Date().toISOString(),
     };
 
