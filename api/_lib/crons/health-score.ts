@@ -142,15 +142,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const limitSetEmails: string[] = [];
     const BATCH = 15;
 
-    for (let i = 0; i < toResume.length; i += BATCH) {
-      const batch = toResume.slice(i, i + BATCH);
-      await Promise.all(
-        batch.map(async (a) => {
-          if (await resumeAccount(a.email, headers)) resumedEmails.push(a.email);
-        })
-      );
-    }
-
+    // ORDER MATTERS (root cause of the "30 of 0" sends): set every account's
+    // daily_limit FIRST — while any still-paused account is still paused — so no
+    // account is ever active while carrying a stale/non-zero limit. A sub-97
+    // account must reach limit 0 BEFORE it goes active, or campaigns fire ~30
+    // in the gap.
     for (let i = 0; i < toFixLimit.length; i += BATCH) {
       const batch = toFixLimit.slice(i, i + BATCH);
       await Promise.all(
@@ -158,6 +154,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const lim = desiredLimit(a.stat_warmup_score);
           await setDailyLimit(a.email, lim, headers);
           limitSetEmails.push(`${a.email} -> ${lim} (score ${a.stat_warmup_score})`);
+        })
+      );
+    }
+
+    // THEN un-pause anything paused, and re-assert its limit in the same step so
+    // it's active with the correct limit (0 for sub-97) from the first second.
+    for (let i = 0; i < toResume.length; i += BATCH) {
+      const batch = toResume.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map(async (a) => {
+          await setDailyLimit(a.email, desiredLimit(a.stat_warmup_score), headers);
+          if (await resumeAccount(a.email, headers)) resumedEmails.push(a.email);
         })
       );
     }
