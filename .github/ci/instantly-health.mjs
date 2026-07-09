@@ -7,7 +7,9 @@
 // SETTLED FACTS (2026-07-09, empirical):
 //   - daily_limit:0 does NOT stop campaign sends (accounts at 0 sent 22-30/day).
 //   - Pausing an account stops its warmup (paused accounts show 0 warmup emails).
-//   - A campaign can ONLY send from mailboxes in its email_list. That is the off switch.
+//   - A campaign can ONLY send from mailboxes in its email_list — BUT removing a
+//     mailbox does not cancel its already-queued sends; a campaign pause->activate
+//     cycle is required to rebuild the queue (also proven 2026-07-09).
 //
 // WHAT THIS DOES, in order:
 //   1. health >= 97 -> daily_limit 20 ; health <= 96 -> daily_limit 0 (belt only)
@@ -92,8 +94,21 @@ for (const c of campaigns) {
   const p = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`, { method: 'PATCH', body: JSON.stringify({ email_list: healthyList }) });
   const v = p && p.ok ? await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`) : null;
   const after = v && v.ok ? await v.json() : null;
-  const clean = after && (after.email_list || []).every((e) => healthy.has(e.toLowerCase())) && after.status === 1;
-  log(`  SYNC ${full.name} removed=${bad} added=${missing} verified=${clean}`);
+  let clean = after && (after.email_list || []).every((e) => healthy.has(e.toLowerCase())) && after.status === 1;
+  // CRITICAL (proven 2026-07-09): removing a mailbox from email_list does NOT
+  // cancel already-queued sends assigned to it — the queue keeps draining.
+  // A pause -> activate cycle rebuilds the queue from the current sender list.
+  let flushed = false;
+  if (clean && bad > 0) {
+    const pz = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}/pause`, { method: 'POST', body: '{}' });
+    await sleep(1000);
+    const ac = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}/activate`, { method: 'POST', body: '{}' });
+    const chk = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`);
+    const st = chk && chk.ok ? (await chk.json()).status : null;
+    flushed = !!(pz && pz.ok && ac && ac.ok && st === 1);
+    if (st !== 1) { problems.push(`campaign ${full.name}: NOT ACTIVE after queue flush (status=${st})`); clean = false; }
+  }
+  log(`  SYNC ${full.name} removed=${bad} added=${missing} verified=${clean} queue_flushed=${flushed}`);
   if (!clean) problems.push(`campaign ${full.name}: sender-list sync FAILED verification`);
 }
 
@@ -111,7 +126,7 @@ outer: while (pages < 60) {
   for (const e of d.items || []) {
     const ts = Date.parse(e.timestamp_email || e.timestamp_created || 0);
     if (ts && ts < since) break outer;
-    if (e.ue_type === 1 && e.eaccount) {
+    if (e.ue_type === 1 && e.eaccount && e.campaign_id) { // campaign sends only; warmup has no campaign_id
       const k = e.eaccount.toLowerCase();
       counts.set(k, (counts.get(k) || 0) + 1);
     }
