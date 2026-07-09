@@ -113,40 +113,33 @@ for (const c of campaigns) {
 }
 
 // ---- 4: audit actual sends over the rolling window ----
+// Per-mailbox precision query (the global /emails feed is unordered and can
+// resurface/duplicate old items — it produced false alarms). For each sub-97
+// mailbox, fetch ITS recent items and take the newest real campaign send
+// (ue_type=1 AND campaign_id set AND eaccount matches; warmup has no campaign_id).
 const since = Date.now() - AUDIT_WINDOW_MIN * 60_000;
-const counts = new Map();
-let after;
-let pages = 0;
-let oldStreak = 0; // the feed is NOT strictly time-ordered: old items surface
-// late and new items can appear after them. So: filter each item by ITS OWN
-// timestamp, and only stop after a long run of consecutive old items.
-outer: while (pages < 60) {
-  const url = `https://api.instantly.ai/api/v2/emails?limit=100${after ? `&starting_after=${encodeURIComponent(after)}` : ''}`;
-  const r = await req(url);
-  if (!r || !r.ok) break;
+const unhealthyAccounts = accounts.filter((a) => !healthy.has(a.email.toLowerCase()));
+const counts = new Map(); // email -> newest in-window campaign-send ts
+await inBatches(unhealthyAccounts, 8, async (a) => {
+  const em = a.email.toLowerCase();
+  const r = await req(`https://api.instantly.ai/api/v2/emails?limit=50&search=${encodeURIComponent(a.email)}`);
+  if (!r || !r.ok) return;
   const d = await r.json();
-  pages++;
+  let newest = 0;
   for (const e of d.items || []) {
-    const ts = Date.parse(e.timestamp_email || e.timestamp_created || 0);
-    const inWindow = Number.isFinite(ts) && ts >= since;
-    if (inWindow) oldStreak = 0; else oldStreak++;
-    if (oldStreak >= 200) break outer; // well past the window; stop scanning
-    if (!inWindow) continue;            // per-item window check — old items never counted
-    if (e.ue_type === 1 && e.eaccount && e.campaign_id) { // campaign sends only; warmup has no campaign_id
-      const k = e.eaccount.toLowerCase();
-      counts.set(k, (counts.get(k) || 0) + 1);
+    if (e.ue_type === 1 && e.campaign_id && (e.eaccount || '').toLowerCase() === em) {
+      const ts = Date.parse(e.timestamp_email || e.timestamp_created || '');
+      if (Number.isFinite(ts) && ts > newest) newest = ts;
     }
   }
-  if (!d.next_starting_after) break;
-  after = d.next_starting_after;
-}
+  if (newest >= since) counts.set(em, newest);
+});
+const pages = unhealthyAccounts.length; // reported as accounts checked
 const offenders = [...counts.entries()]
-  .filter(([e]) => !healthy.has(e))
-  .map(([email, sent]) => ({ email, sent, score: accounts.find((a) => a.email.toLowerCase() === email)?.stat_warmup_score ?? null }))
-  .sort((a, b) => b.sent - a.sent);
-const totalSent = [...counts.values()].reduce((a, b) => a + b, 0);
-log(`audit: last ${AUDIT_WINDOW_MIN}min pages=${pages} total_sent=${totalSent} unique_senders=${counts.size} sub97_offenders=${offenders.length}`);
-for (const o of offenders) log(`  OFFENDER ${o.email} sent=${o.sent} score=${o.score}`);
+  .map(([email, ts]) => ({ email, last_campaign_send: new Date(ts).toISOString(), score: accounts.find((a) => a.email.toLowerCase() === email)?.stat_warmup_score ?? null }))
+  .sort((a, b) => (a.last_campaign_send < b.last_campaign_send ? 1 : -1));
+log(`audit: last ${AUDIT_WINDOW_MIN}min sub97_checked=${pages} sub97_offenders=${offenders.length}`);
+for (const o of offenders) log(`  OFFENDER ${o.email} last_campaign_send=${o.last_campaign_send} score=${o.score}`);
 
 if (offenders.length) problems.push(`${offenders.length} sub-97 mailboxes SENT in the last ${AUDIT_WINDOW_MIN}min — settings are being bypassed`);
 if (problems.length) {
