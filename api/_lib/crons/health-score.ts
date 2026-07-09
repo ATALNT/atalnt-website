@@ -149,6 +149,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           verified = el.every((e) => healthy.has(e));
         }
       }
+      // QUEUE FLUSH (proven 2026-07-09): removing a mailbox from email_list does
+      // NOT cancel its already-queued sends — the queue keeps draining. A
+      // pause -> activate cycle rebuilds the queue from the current sender list.
+      // Campaign-level pause does not affect account warmup.
+      if (verified && removed > 0) {
+        await fetch(`https://api.instantly.ai/api/v2/campaigns/${c.id}/pause`, { method: 'POST', headers, body: '{}' });
+        await new Promise((r) => setTimeout(r, 1000));
+        await fetch(`https://api.instantly.ai/api/v2/campaigns/${c.id}/activate`, { method: 'POST', headers, body: '{}' });
+        const chk2 = await fetch(`https://api.instantly.ai/api/v2/campaigns/${c.id}`, { method: 'GET', headers });
+        if (chk2.ok && ((await chk2.json()) as InstantlyCampaign).status !== 1) {
+          verified = false; // campaign not active after flush — surface it
+        }
+      }
       campaignChanges.push({ campaign: full.name || c.id, removed, added, senders, verified });
     }
 
