@@ -112,6 +112,33 @@ for (const c of campaigns) {
   if (!clean) problems.push(`campaign ${full.name}: sender-list sync FAILED verification`);
 }
 
+// ---- 3.5: bounce circuit breaker (every run, not just daily) ----
+// If a campaign's bounce rate crosses the danger line, PAUSE it immediately
+// and fail the run so the operator gets an email. Min-volume gates stop tiny
+// campaigns from false-tripping. A human decides when to resume.
+{
+  const r = await req('https://api.instantly.ai/api/v2/campaigns/analytics');
+  if (r && r.ok) {
+    const rows = await r.json();
+    for (const row of rows) {
+      if (row.campaign_status !== 1) continue;
+      const sent = row.emails_sent_count || 0;
+      const bounced = row.bounced_count || 0;
+      const rate = sent > 0 ? bounced / sent : 0;
+      const trip = (rate > 0.10 && sent >= 100) || (rate > 0.05 && sent >= 300);
+      if (!trip) continue;
+      const pz = await req(`https://api.instantly.ai/api/v2/campaigns/${row.campaign_id}/pause`, { method: 'POST', body: '{}' });
+      const chk = await req(`https://api.instantly.ai/api/v2/campaigns/${row.campaign_id}`);
+      const st = chk && chk.ok ? (await chk.json()).status : null;
+      log(`  BOUNCE-TRIP ${row.campaign_name} rate=${(rate * 100).toFixed(1)}% (${bounced}/${sent}) paused=${st === 2}`);
+      problems.push(`BOUNCE GUARD paused campaign "${row.campaign_name}" at ${(rate * 100).toFixed(1)}% bounce (${bounced}/${sent}) — investigate before resuming`);
+      if (!(pz && pz.ok) || st !== 2) problems.push(`bounce guard FAILED to pause ${row.campaign_name}`);
+    }
+  } else {
+    problems.push('bounce guard: analytics endpoint unreachable');
+  }
+}
+
 // ---- 4: audit actual sends over the rolling window ----
 // Per-mailbox precision query (the global /emails feed is unordered and can
 // resurface/duplicate old items — it produced false alarms). For each sub-97
