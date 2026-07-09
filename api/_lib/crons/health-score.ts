@@ -1,10 +1,19 @@
 // ============================================
-// GET /api/instantly/cron-health-score — Health Score Auto-Manager
-// Fetches ALL Instantly accounts and enforces the rule:
-//   warmup score <  97  -> PAUSE the account (stops sending, warmup continues)
-//   warmup score >= 97  -> RESUME the account and set daily_limit to 20
-// Pause/resume is the only reliable on/off switch — daily_limit:0 is ignored
-// by the Instantly API. Runs on a schedule (see vercel.json) a few times a day.
+// /api/instantly/cron?task=health — Health Score Auto-Manager
+//
+// THE MECHANISM THAT ACTUALLY WORKS (settled 2026-07-09 after hard evidence):
+// campaigns can only send from mailboxes in their sender list (email_list).
+// So the health rhythm is enforced by SENDER-LIST MEMBERSHIP:
+//   health >= 97  -> present in every active campaign's email_list, daily_limit 20
+//   health <= 96  -> REMOVED from every active campaign's email_list, daily_limit 0
+// Accounts are NEVER paused (pausing stops warmup — user-verified: paused
+// accounts show 0 warmup emails). Removed accounts stay active so warmup
+// keeps healing them; once they hit 97 they are auto-added back.
+//
+// Why not daily_limit:0 alone? PROVEN INSUFFICIENT: accounts at limit 0
+// (active, verified clean 2026-07-08 evening) still sent 22-30 campaign emails
+// on 2026-07-09. Instantly does not reliably honor 0 as "off". Limits are kept
+// only as a belt (20 cap for healthy, 0 for sub-97), never as the off switch.
 // ============================================
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -14,86 +23,53 @@ const DEFAULT_DAILY_LIMIT = 20;
 
 interface InstantlyAccount {
   email: string;
-  status: number;
+  status: number; // 1=active, 2=paused, -1=error
   daily_limit: number | null;
   stat_warmup_score: number | null;
 }
 
-interface InstantlyListResponse {
-  items: InstantlyAccount[];
+interface InstantlyCampaign {
+  id: string;
+  name?: string;
+  status: number; // 1=active
+  email_list?: string[];
+}
+
+interface ListResponse<T> {
+  items: T[];
   next_starting_after?: string;
 }
 
-async function fetchAllAccounts(apiKey: string): Promise<InstantlyAccount[]> {
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
-  };
-  // Straight pagination via next_starting_after reliably returns every account.
-  // (The old two-letter-search workaround silently skipped accounts, so
-  // low-health / limit-drifted mailboxes were never paused or re-capped.)
-  const allAccounts: InstantlyAccount[] = [];
-  const seen = new Set<string>();
+async function fetchAll<T>(base: string, headers: Record<string, string>): Promise<T[]> {
+  const out: T[] = [];
   let startAfter: string | undefined;
   while (true) {
-    const url = `https://api.instantly.ai/api/v2/accounts?limit=100${startAfter ? `&starting_after=${encodeURIComponent(startAfter)}` : ''}`;
+    const url = `${base}${base.includes('?') ? '&' : '?'}limit=100${startAfter ? `&starting_after=${encodeURIComponent(startAfter)}` : ''}`;
     const resp = await fetch(url, { method: 'GET', headers });
     if (!resp.ok) break;
-    const data: InstantlyListResponse = await resp.json();
-    for (const item of data.items || []) {
-      if (!seen.has(item.email)) {
-        seen.add(item.email);
-        allAccounts.push(item);
-      }
-    }
+    const data: ListResponse<T> = await resp.json();
+    out.push(...(data.items || []));
     if (data.next_starting_after) startAfter = data.next_starting_after;
     else break;
   }
-  return allAccounts;
+  return out;
 }
 
-// Pause an account (stops campaign sending, warmup continues). Sets status=2.
-// NOTE: daily_limit:0 does NOT work — the Instantly API silently ignores it and
-// keeps the limit at its previous value. The pause/resume endpoints are the only
-// reliable on/off switch.
-async function pauseAccount(email: string, headers: Record<string, string>): Promise<boolean> {
-  const resp = await fetch(`https://api.instantly.ai/api/v2/accounts/${encodeURIComponent(email)}/pause`, {
-    method: 'POST',
-    headers,
-    body: '{}',
-  });
-  if (!resp.ok) {
-    console.error(`Failed to pause ${email}: ${resp.status} ${await resp.text()}`);
-    return false;
-  }
-  return true;
-}
-
-// Resume an account (re-enables campaign sending). Sets status=1.
 async function resumeAccount(email: string, headers: Record<string, string>): Promise<boolean> {
   const resp = await fetch(`https://api.instantly.ai/api/v2/accounts/${encodeURIComponent(email)}/resume`, {
     method: 'POST',
     headers,
     body: '{}',
   });
-  if (!resp.ok) {
-    console.error(`Failed to resume ${email}: ${resp.status} ${await resp.text()}`);
-    return false;
-  }
-  return true;
+  return resp.ok;
 }
 
-// Ensure daily_limit is set to the desired sending volume (only non-zero values persist).
 async function setDailyLimit(email: string, limit: number, headers: Record<string, string>): Promise<void> {
-  const resp = await fetch(`https://api.instantly.ai/api/v2/accounts/${encodeURIComponent(email)}`, {
+  await fetch(`https://api.instantly.ai/api/v2/accounts/${encodeURIComponent(email)}`, {
     method: 'PATCH',
     headers,
     body: JSON.stringify({ daily_limit: limit }),
   });
-  if (!resp.ok) {
-    const errText = await resp.text();
-    console.error(`Failed to update ${email}: ${resp.status} ${errText}`);
-  }
 }
 
 export const maxDuration = 300;
@@ -101,91 +77,97 @@ export const maxDuration = 300;
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authHeader = req.headers.authorization;
   const cronSecret = process.env.CRON_SECRET;
-
   if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
-
   const apiKey = process.env.INSTANTLY_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'INSTANTLY_API_KEY not configured' });
-  }
-
+  if (!apiKey) return res.status(500).json({ error: 'INSTANTLY_API_KEY not configured' });
   const dailyLimit = Number(process.env.INSTANTLY_DAILY_LIMIT) || DEFAULT_DAILY_LIMIT;
+  const headers = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' };
 
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
-  };
-
-  // status codes: 1 = active (sending), 2 = paused
-  const HEALTHY_SCORE = 97;
-  const STATUS_PAUSED = 2;
   try {
-    const accounts = await fetchAllAccounts(apiKey);
-
-    // The rule (NEVER pause — pausing an account halts its warmup, which freezes
-    // an unhealthy mailbox instead of letting it heal):
-    //   health >= 97  -> daily_limit = <dailyLimit>  (send + warm)
-    //   health <= 96  -> daily_limit = 0             (warm only, no cold sending)
-    // Warmup keeps running at any daily_limit including 0, so low-health mailboxes
-    // recover instead of freezing. Also un-pause anything still paused.
-    const desiredLimit = (score: number | null | undefined) =>
-      (score ?? 0) >= HEALTHY_SCORE ? dailyLimit : 0;
-
-    const toResume = accounts.filter((a) => a.status === STATUS_PAUSED);
-    const toFixLimit = accounts.filter(
-      (a) => (a.daily_limit ?? -1) !== desiredLimit(a.stat_warmup_score)
+    const accounts = await fetchAll<InstantlyAccount>('https://api.instantly.ai/api/v2/accounts', headers);
+    const healthy = new Set(
+      accounts.filter((a) => (a.stat_warmup_score ?? 0) >= MIN_SCORE && a.status !== -1).map((a) => a.email.toLowerCase())
     );
 
-    const resumedEmails: string[] = [];
-    const limitSetEmails: string[] = [];
+    // 1) Belt: limits (never the off switch, but keeps intent visible + caps healthy at 20)
+    const desired = (a: InstantlyAccount) => (healthy.has(a.email.toLowerCase()) ? dailyLimit : 0);
+    const toFix = accounts.filter((a) => (a.daily_limit ?? -1) !== desired(a));
     const BATCH = 15;
-
-    // ORDER MATTERS (root cause of the "30 of 0" sends): set every account's
-    // daily_limit FIRST — while any still-paused account is still paused — so no
-    // account is ever active while carrying a stale/non-zero limit. A sub-97
-    // account must reach limit 0 BEFORE it goes active, or campaigns fire ~30
-    // in the gap.
-    for (let i = 0; i < toFixLimit.length; i += BATCH) {
-      const batch = toFixLimit.slice(i, i + BATCH);
-      await Promise.all(
-        batch.map(async (a) => {
-          const lim = desiredLimit(a.stat_warmup_score);
-          await setDailyLimit(a.email, lim, headers);
-          limitSetEmails.push(`${a.email} -> ${lim} (score ${a.stat_warmup_score})`);
-        })
-      );
+    for (let i = 0; i < toFix.length; i += BATCH) {
+      await Promise.all(toFix.slice(i, i + BATCH).map((a) => setDailyLimit(a.email, desired(a), headers)));
     }
 
-    // THEN un-pause anything paused, and re-assert its limit in the same step so
-    // it's active with the correct limit (0 for sub-97) from the first second.
-    for (let i = 0; i < toResume.length; i += BATCH) {
-      const batch = toResume.slice(i, i + BATCH);
+    // 2) Never leave anything paused (pausing stops warmup)
+    const paused = accounts.filter((a) => a.status === 2);
+    const resumedEmails: string[] = [];
+    for (let i = 0; i < paused.length; i += BATCH) {
       await Promise.all(
-        batch.map(async (a) => {
-          await setDailyLimit(a.email, desiredLimit(a.stat_warmup_score), headers);
+        paused.slice(i, i + BATCH).map(async (a) => {
+          await setDailyLimit(a.email, desired(a), headers); // limit correct BEFORE it goes active
           if (await resumeAccount(a.email, headers)) resumedEmails.push(a.email);
         })
       );
     }
 
+    // 3) THE OFF SWITCH: sync every active campaign's sender list to healthy-only.
+    //    Removes sub-97 mailboxes (they cannot send at all), adds back healed ones.
+    const campaigns = await fetchAll<InstantlyCampaign>('https://api.instantly.ai/api/v2/campaigns', headers);
+    const active = campaigns.filter((c) => c.status === 1);
+    const healthyList = accounts
+      .filter((a) => healthy.has(a.email.toLowerCase()))
+      .map((a) => a.email);
+
+    const campaignChanges: { campaign: string; removed: number; added: number; senders: number; verified: boolean }[] = [];
+    for (const c of active) {
+      const resp = await fetch(`https://api.instantly.ai/api/v2/campaigns/${c.id}`, { method: 'GET', headers });
+      if (!resp.ok) continue;
+      const full: InstantlyCampaign = await resp.json();
+      const current = (full.email_list || []).map((e) => e.toLowerCase());
+      const currentSet = new Set(current);
+      const removed = current.filter((e) => !healthy.has(e)).length;
+      const added = healthyList.filter((e) => !currentSet.has(e.toLowerCase())).length;
+      if (removed === 0 && added === 0) {
+        campaignChanges.push({ campaign: full.name || c.id, removed: 0, added: 0, senders: current.length, verified: true });
+        continue;
+      }
+      const patch = await fetch(`https://api.instantly.ai/api/v2/campaigns/${c.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ email_list: healthyList }),
+      });
+      // Verify with a fresh GET — never trust the write.
+      let verified = false;
+      let senders = 0;
+      if (patch.ok) {
+        const check = await fetch(`https://api.instantly.ai/api/v2/campaigns/${c.id}`, { method: 'GET', headers });
+        if (check.ok) {
+          const after: InstantlyCampaign = await check.json();
+          const el = (after.email_list || []).map((e) => e.toLowerCase());
+          senders = el.length;
+          verified = el.every((e) => healthy.has(e));
+        }
+      }
+      campaignChanges.push({ campaign: full.name || c.id, removed, added, senders, verified });
+    }
+
     const result = {
-      total: accounts.length,
+      total_accounts: accounts.length,
+      healthy_97_plus: healthy.size,
+      unhealthy_delisted: accounts.length - healthy.size,
+      limits_fixed: toFix.length,
       resumed: resumedEmails.length,
-      limit_set: limitSetEmails.length,
-      healthy_sending: accounts.filter((a) => (a.stat_warmup_score ?? 0) >= HEALTHY_SCORE).length,
-      warming_at_zero: accounts.filter((a) => (a.stat_warmup_score ?? 0) < HEALTHY_SCORE).length,
-      healthy_score: HEALTHY_SCORE,
-      daily_limit_setting: dailyLimit,
-      policy: 'never pause; health>=97 -> daily_limit 20, health<=96 -> daily_limit 0 (warmup keeps running)',
+      active_campaigns_synced: campaignChanges.length,
+      campaigns: campaignChanges,
+      policy:
+        'off switch = sender-list membership: sub-97 removed from all active campaigns (cannot send), 97+ present + capped 20/day; never pause (pausing stops warmup); daily_limit 0 kept as belt only',
       timestamp: new Date().toISOString(),
     };
-
-    console.log('Health score manager result:', JSON.stringify(result));
+    console.log('Health manager result:', JSON.stringify(result));
     return res.status(200).json(result);
   } catch (err: any) {
-    console.error('Health score manager error:', err.message);
+    console.error('Health manager error:', err.message);
     return res.status(500).json({ error: err.message });
   }
 }
