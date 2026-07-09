@@ -117,6 +117,9 @@ const since = Date.now() - AUDIT_WINDOW_MIN * 60_000;
 const counts = new Map();
 let after;
 let pages = 0;
+let oldStreak = 0; // the feed is NOT strictly time-ordered: old items surface
+// late and new items can appear after them. So: filter each item by ITS OWN
+// timestamp, and only stop after a long run of consecutive old items.
 outer: while (pages < 60) {
   const url = `https://api.instantly.ai/api/v2/emails?limit=100${after ? `&starting_after=${encodeURIComponent(after)}` : ''}`;
   const r = await req(url);
@@ -125,7 +128,10 @@ outer: while (pages < 60) {
   pages++;
   for (const e of d.items || []) {
     const ts = Date.parse(e.timestamp_email || e.timestamp_created || 0);
-    if (ts && ts < since) break outer;
+    const inWindow = Number.isFinite(ts) && ts >= since;
+    if (inWindow) oldStreak = 0; else oldStreak++;
+    if (oldStreak >= 200) break outer; // well past the window; stop scanning
+    if (!inWindow) continue;            // per-item window check — old items never counted
     if (e.ue_type === 1 && e.eaccount && e.campaign_id) { // campaign sends only; warmup has no campaign_id
       const k = e.eaccount.toLowerCase();
       counts.set(k, (counts.get(k) || 0) + 1);
