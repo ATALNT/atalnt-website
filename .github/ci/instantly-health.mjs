@@ -70,6 +70,7 @@ async function inBatches(items, size, fn) {
 
 async function runOnce() {
   const problems = [];
+  const iterationStart = Date.now();
 
   // ---- accounts ----
   const accounts = await fetchAll('https://api.instantly.ai/api/v2/accounts');
@@ -117,7 +118,7 @@ async function runOnce() {
     let flushed = false;
     if (ok && removed > 0) {
       const pz = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}/pause`, { method: 'POST', body: '{}' });
-      await sleep(1000);
+      await sleep(4000);
       const ac = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}/activate`, { method: 'POST', body: '{}' });
       const chk = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`);
       const st = chk && chk.ok ? (await chk.json()).status : null;
@@ -171,6 +172,23 @@ async function runOnce() {
   log(`audit: last ${AUDIT_WINDOW_MIN}min non_roster_checked=${nonRoster.length} offenders=${offenders.length}`);
   for (const o of offenders) log(`  OFFENDER ${o.email} last_campaign_send=${o.last} score=${o.score} status=${o.state}`);
   if (offenders.length) problems.push(`${offenders.length} non-roster mailboxes SENT within ${AUDIT_WINDOW_MIN}min — leaking NOW`);
+
+  // SELF-HEAL (2026-07-10): one flush cycle was observed not to take — the stale
+  // queue kept draining until the next roster write. If any offender's send is
+  // newer than this iteration's start, force a fresh pause->activate on every
+  // active campaign; the next iteration's audit verifies it held.
+  const liveLeak = offenders.some((o) => Date.parse(o.last) >= iterationStart - 60_000);
+  if (liveLeak) {
+    log('  REACTIVE FLUSH: re-flushing all active campaigns (leak newer than iteration start)');
+    for (const c of campaigns) {
+      await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}/pause`, { method: 'POST', body: '{}' });
+      await sleep(4000);
+      await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}/activate`, { method: 'POST', body: '{}' });
+      const chk = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`);
+      const st = chk && chk.ok ? (await chk.json()).status : null;
+      if (st !== 1) problems.push(`reactive flush: campaign ${c.id} NOT ACTIVE after cycle (status=${st})`);
+    }
+  }
 
   return problems;
 }
