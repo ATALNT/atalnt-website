@@ -59,8 +59,10 @@ async function inBatches(items, size, fn) {
   for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn));
 }
 
-const problems = [];
 const log = (m) => console.log(m);
+
+async function runOnce() {
+  const problems = [];
 
 // ---- 1+2: accounts: limits belt + never paused ----
 const accounts = await fetchAll('https://api.instantly.ai/api/v2/accounts');
@@ -169,8 +171,32 @@ log(`audit: last ${AUDIT_WINDOW_MIN}min sub97_checked=${pages} sub97_offenders=$
 for (const o of offenders) log(`  OFFENDER ${o.email} last_campaign_send=${o.last_campaign_send} score=${o.score}`);
 
 if (offenders.length) problems.push(`${offenders.length} sub-97 mailboxes SENT in the last ${AUDIT_WINDOW_MIN}min — settings are being bypassed`);
-if (problems.length) {
-  console.error('\nPROBLEMS:\n- ' + problems.join('\n- '));
-  process.exit(1); // fail the workflow -> GitHub notifies the owner by email
+  return problems;
 }
-log('\nALL CLEAR: sub-97 mailboxes delisted everywhere, zero sub-97 sends in window.');
+
+// ---- driver: single pass by default; continuous loop when GUARD_LOOP_MINUTES is set ----
+// GitHub throttles cron schedules to 1.5-3.5h gaps (observed 2026-07-10), which let
+// mid-day health-droppers send for hours. Fix: each workflow run IS the cadence —
+// it re-enforces every 10 minutes for ~GUARD_LOOP_MINUTES, and runs chain back to
+// back (concurrency group queues the next scheduled run), giving 24/7 coverage.
+const LOOP_MIN = Number(process.env.GUARD_LOOP_MINUTES || 0);
+const INTERVAL_MS = 10 * 60_000;
+const deadline = Date.now() + LOOP_MIN * 60_000;
+const allProblems = [];
+for (let iter = 1; ; iter++) {
+  const t0 = Date.now();
+  log(`\n===== guard iteration ${iter} @ ${new Date().toISOString()} =====`);
+  let probs = [];
+  try { probs = await runOnce(); } catch (e) { probs = [`iteration crashed: ${e.message}`]; }
+  for (const pr of probs) console.error(`::error::${pr}`);
+  allProblems.push(...probs);
+  if (Date.now() + INTERVAL_MS > deadline) break;
+  const wait = Math.max(5_000, INTERVAL_MS - (Date.now() - t0));
+  log(`-- iteration ${iter}: ${probs.length} problem(s); next in ${Math.round(wait / 1000)}s --`);
+  await sleep(wait);
+}
+if (allProblems.length) {
+  console.error('\nPROBLEMS THIS RUN:\n- ' + allProblems.join('\n- '));
+  process.exit(1); // fail -> GitHub emails the owner
+}
+log('\nALL CLEAR: sub-97 mailboxes delisted everywhere, zero sub-97 sends, no bounce trips.');
