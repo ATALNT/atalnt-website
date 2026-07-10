@@ -79,8 +79,42 @@ async function runOnce() {
   const score = (a) => a.stat_warmup_score ?? 0;
   const canStay = new Set(accounts.filter((a) => clean(a) && score(a) >= STAY_SCORE).map((a) => a.email.toLowerCase()));
   const canAdd = accounts.filter((a) => clean(a) && score(a) >= ADD_SCORE).map((a) => a.email);
-  const errorState = accounts.filter((a) => a.status !== 1 || a.status_message).length;
-  log(`accounts=${accounts.length} roster-eligible(97+/clean)=${canStay.size} addable(98+/clean)=${canAdd.length} error-state=${errorState}`);
+  const errorAccounts = accounts.filter((a) => a.status !== 1 || a.status_message);
+
+  // ---- QUARANTINE (2026-07-10): error states like Google's "550 daily limit
+  // exceeded" are TEMPORARY — the account looks pristine again a day later and
+  // was getting re-admitted, then re-burned (two gmails lost that way). Any
+  // account seen in an error state is tagged guard-q-<date> in Instantly and
+  // stays OFF rosters for QUARANTINE_DAYS after, even while looking clean.
+  const QUARANTINE_DAYS = 3;
+  const today = new Date().toISOString().slice(0, 10);
+  const cutoff = new Date(Date.now() - QUARANTINE_DAYS * 86_400_000).toISOString().slice(0, 10);
+  const quarantined = new Set();
+  {
+    const tags = await fetchAll('https://api.instantly.ai/api/v2/custom-tags');
+    let todayTag = null;
+    for (const t of tags) {
+      const m = /^guard-q-(\d{4}-\d{2}-\d{2})$/.exec(t.label || '');
+      if (!m) continue;
+      if (m[1] < cutoff) { await req(`https://api.instantly.ai/api/v2/custom-tags/${t.id}`, { method: 'DELETE' }); continue; }
+      if (m[1] === today) todayTag = t;
+      const members = await fetchAll(`https://api.instantly.ai/api/v2/accounts?tag_ids=${t.id}`);
+      for (const a of members) quarantined.add(a.email.toLowerCase());
+    }
+    if (errorAccounts.length) {
+      if (!todayTag) {
+        const cr = await req('https://api.instantly.ai/api/v2/custom-tags', { method: 'POST', body: JSON.stringify({ label: `guard-q-${today}`, description: 'health guard quarantine: account was in an error state on this date' }) });
+        if (cr && cr.ok) todayTag = await cr.json();
+      }
+      if (todayTag) {
+        await req('https://api.instantly.ai/api/v2/custom-tags/toggle-resource', { method: 'POST', body: JSON.stringify({ tag_ids: [todayTag.id], resource_type: 1, resource_ids: errorAccounts.map((a) => a.email), assign: true }) });
+        for (const a of errorAccounts) quarantined.add(a.email.toLowerCase());
+      } else problems.push('quarantine: could not create/find today tag');
+    }
+    for (const em of quarantined) { canStay.delete(em); }
+  }
+  const canAddFinal = canAdd.filter((e) => !quarantined.has(e.toLowerCase()));
+  log(`accounts=${accounts.length} roster-eligible(clean,97+,not-quarantined)=${canStay.size} addable(98+)=${canAddFinal.length} error-state=${errorAccounts.length} quarantined=${quarantined.size}`);
 
   // ---- limits belt + never leave anything paused ----
   const want = (a) => (canStay.has(a.email.toLowerCase()) ? DAILY_LIMIT : 0);
@@ -105,7 +139,7 @@ async function runOnce() {
     const curLower = new Set(cur.map((e) => e.toLowerCase()));
     // keep existing members while they are >=97 & clean; admit new only at >=98 & clean
     const stayers = cur.filter((e) => canStay.has(e.toLowerCase()));
-    const newcomers = canAdd.filter((e) => !curLower.has(e.toLowerCase()));
+    const newcomers = canAddFinal.filter((e) => !curLower.has(e.toLowerCase()));
     const target = [...stayers, ...newcomers];
     const removed = cur.length - stayers.length;
     const added = newcomers.length;
