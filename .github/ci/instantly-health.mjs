@@ -64,6 +64,17 @@ async function fetchAll(base) {
   return out;
 }
 
+async function delTag(id) {
+  for (let i = 0; i < 4; i++) {
+    try {
+      const r = await fetch(`https://api.instantly.ai/api/v2/custom-tags/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${KEY}`, 'User-Agent': 'atalnt-health-guard' } });
+      if (r.status === 429 || r.status >= 500) { await sleep(1500 * (i + 1)); continue; }
+      return r.ok;
+    } catch { await sleep(1500 * (i + 1)); }
+  }
+  return false;
+}
+
 async function inBatches(items, size, fn) {
   for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn));
 }
@@ -75,11 +86,13 @@ async function runOnce() {
   // ---- accounts ----
   const accounts = await fetchAll('https://api.instantly.ai/api/v2/accounts');
   if (accounts.length < 600) { problems.push(`account fetch suspicious: ${accounts.length}`); return problems; }
-  const clean = (a) => a.status === 1 && !a.status_message;
+  // status_message is UNRELIABLE: June OAuth errors never clear while the mailbox
+  // demonstrably sends (warmup flowing, score 93-100). Only live status counts.
+  const clean = (a) => a.status === 1;
   const score = (a) => a.stat_warmup_score ?? 0;
   const canStay = new Set(accounts.filter((a) => clean(a) && score(a) >= STAY_SCORE).map((a) => a.email.toLowerCase()));
   const canAdd = accounts.filter((a) => clean(a) && score(a) >= ADD_SCORE).map((a) => a.email);
-  const errorAccounts = accounts.filter((a) => a.status !== 1 || a.status_message);
+  const errorAccounts = accounts.filter((a) => a.status !== 1);
 
   // ---- QUARANTINE (2026-07-10): error states like Google's "550 daily limit
   // exceeded" are TEMPORARY — the account looks pristine again a day later and
@@ -93,13 +106,22 @@ async function runOnce() {
   {
     const tags = await fetchAll('https://api.instantly.ai/api/v2/custom-tags');
     let todayTag = null;
+    const seenDates = new Map();
     for (const t of tags) {
       const m = /^guard-q-(\d{4}-\d{2}-\d{2})$/.exec(t.label || '');
       if (!m) continue;
-      if (m[1] < cutoff) { await req(`https://api.instantly.ai/api/v2/custom-tags/${t.id}`, { method: 'DELETE' }); continue; }
-      if (m[1] === today) todayTag = t;
+      if (m[1] < cutoff) { await delTag(t.id); continue; }
       const members = await fetchAll(`https://api.instantly.ai/api/v2/accounts?tag_ids=${t.id}`);
       for (const a of members) quarantined.add(a.email.toLowerCase());
+      if (seenDates.has(m[1])) {
+        // duplicate tag for the same date (created by racing runners): merge + delete
+        const keeper = seenDates.get(m[1]);
+        if (members.length) await req('https://api.instantly.ai/api/v2/custom-tags/toggle-resource', { method: 'POST', body: JSON.stringify({ tag_ids: [keeper], resource_type: 1, resource_ids: members.map((a) => a.email), assign: true }) });
+        await delTag(t.id);
+        continue;
+      }
+      seenDates.set(m[1], t.id);
+      if (m[1] === today) todayTag = t;
     }
     if (errorAccounts.length) {
       if (!todayTag) {
