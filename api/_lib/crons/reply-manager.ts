@@ -7,6 +7,23 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// Instantly caps the workspace at 20 API requests/minute and everything shares
+// that budget (health guard, refills, these crons). Raw fetch dies on 429 and
+// the whole daily run is lost. Module-level wrapper: every call retries 429/5xx
+// with backoff instead.
+const origFetch = globalThis.fetch;
+const fetch: typeof globalThis.fetch = async (input: any, init?: any) => {
+  for (let attempt = 0; ; attempt++) {
+    const resp = await origFetch(input, init);
+    if ((resp.status === 429 || resp.status >= 500) && attempt < 6) {
+      await new Promise((r) => setTimeout(r, 4000 * (attempt + 1)));
+      continue;
+    }
+    return resp;
+  }
+};
+
+
 export const maxDuration = 300;
 
 // ── Classification keywords ──────────────────────────────────────────

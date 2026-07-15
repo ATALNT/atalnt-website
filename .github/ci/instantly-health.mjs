@@ -79,7 +79,7 @@ async function inBatches(items, size, fn) {
   for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn));
 }
 
-async function runOnce() {
+async function runOnce(iterIndex = 0) {
   const problems = [];
   const iterationStart = Date.now();
 
@@ -209,9 +209,20 @@ async function runOnce() {
 
   // ---- reality audit: per-mailbox newest campaign send, non-roster accounts ----
   const since = Date.now() - AUDIT_WINDOW_MIN * 60_000;
-  const nonRoster = accounts.filter((a) => !canStay.has(a.email.toLowerCase()));
+  let nonRoster = accounts.filter((a) => !canStay.has(a.email.toLowerCase()));
+  // Instantly rate-limits the whole workspace to 20 req/min. Auditing every
+  // non-roster mailbox every iteration starves the other automations (reply
+  // manager hit 429s). In loop mode, audit a rotating slice per iteration —
+  // full coverage every few iterations; single-pass runs still audit everything.
+  const SLICE = 40;
+  if (Number(process.env.GUARD_LOOP_MINUTES || 0) && nonRoster.length > SLICE) {
+    nonRoster.sort((a, b) => a.email.localeCompare(b.email));
+    const chunks = Math.ceil(nonRoster.length / SLICE);
+    const off = iterIndex % chunks;
+    nonRoster = nonRoster.slice(off * SLICE, (off + 1) * SLICE);
+  }
   const offenders = [];
-  await inBatches(nonRoster, 8, async (a) => {
+  await inBatches(nonRoster, 5, async (a) => {
     const em = a.email.toLowerCase();
     const r = await req(`https://api.instantly.ai/api/v2/emails?limit=50&search=${encodeURIComponent(a.email)}`);
     if (!r || !r.ok) return;
@@ -261,7 +272,7 @@ for (let iter = 1; ; iter++) {
   const t0 = Date.now();
   if (LOOP_MIN) log(`\n===== guard iteration ${iter} @ ${new Date().toISOString()} =====`);
   let probs = [];
-  try { probs = await runOnce(); } catch (e) { probs = [`iteration crashed: ${e.message}`]; }
+  try { probs = await runOnce(iter - 1); } catch (e) { probs = [`iteration crashed: ${e.message}`]; }
   for (const pr of probs) console.error(`::error::${pr}`);
   allProblems.push(...probs);
   if (Date.now() + INTERVAL_MS > deadline) break;
