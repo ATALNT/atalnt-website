@@ -36,6 +36,22 @@ const ADD_SCORE = 98;
 const DAILY_LIMIT = 20;
 const AUDIT_WINDOW_MIN = Number(process.env.AUDIT_WINDOW_MIN || 15);
 
+// PROTECTED WARMUP-ONLY MAILBOXES (operator directive 2026-07-16): these team
+// mailboxes use Instantly for warmup ONLY. They must NEVER be added to any
+// campaign's sender roster, no matter how healthy they get. Also entered in the
+// Instantly block-list so campaigns can never email them, and tagged
+// "warmup-only-protected" in the UI. Do not remove entries without the operator.
+const PROTECTED_WARMUP_ONLY = new Set([
+  'daniel@atalntcandidates.com',
+  'gabriel@atalntcandidates.com',
+  'mikee@atalntrecruiting.com',
+  'kelona@atalntrecruiting.com',
+  'remishka@atalntrecruiting.com',
+  'dee@atalntrecruiting.com',
+  'jessica@atalntrecruiting.com',
+  'jeet@atalntrecruiting.com',
+]);
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(m);
 
@@ -88,7 +104,7 @@ async function runOnce(iterIndex = 0) {
   if (accounts.length < 600) { problems.push(`account fetch suspicious: ${accounts.length}`); return problems; }
   // status_message is UNRELIABLE: June OAuth errors never clear while the mailbox
   // demonstrably sends (warmup flowing, score 93-100). Only live status counts.
-  const clean = (a) => a.status === 1;
+  const clean = (a) => a.status === 1 && !PROTECTED_WARMUP_ONLY.has(a.email.toLowerCase());
   const score = (a) => a.stat_warmup_score ?? 0;
   const canStay = new Set(accounts.filter((a) => clean(a) && score(a) >= STAY_SCORE).map((a) => a.email.toLowerCase()));
   const canAdd = accounts.filter((a) => clean(a) && score(a) >= ADD_SCORE).map((a) => a.email);

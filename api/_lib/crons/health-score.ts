@@ -87,8 +87,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const accounts = await fetchAll<InstantlyAccount>('https://api.instantly.ai/api/v2/accounts', headers);
+    // PROTECTED WARMUP-ONLY MAILBOXES (operator directive 2026-07-16): team
+    // mailboxes that use Instantly for warmup ONLY — never cold-email senders,
+    // regardless of health score. Mirror of the list in .github/ci/instantly-health.mjs.
+    const PROTECTED_WARMUP_ONLY = new Set([
+      'daniel@atalntcandidates.com',
+      'gabriel@atalntcandidates.com',
+      'mikee@atalntrecruiting.com',
+      'kelona@atalntrecruiting.com',
+      'remishka@atalntrecruiting.com',
+      'dee@atalntrecruiting.com',
+      'jessica@atalntrecruiting.com',
+      'jeet@atalntrecruiting.com',
+    ]);
     const healthy = new Set(
-      accounts.filter((a) => (a.stat_warmup_score ?? 0) >= MIN_SCORE && a.status !== -1).map((a) => a.email.toLowerCase())
+      accounts
+        .filter((a) => (a.stat_warmup_score ?? 0) >= MIN_SCORE && a.status !== -1 && !PROTECTED_WARMUP_ONLY.has(a.email.toLowerCase()))
+        .map((a) => a.email.toLowerCase())
     );
 
     // 1) Belt: limits (never the off switch, but keeps intent visible + caps healthy at 20)
