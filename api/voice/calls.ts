@@ -30,7 +30,9 @@ async function getZohoAccessToken(): Promise<string> {
   }
   const clientId = process.env.ZOHO_CLIENT_ID;
   const clientSecret = process.env.ZOHO_CLIENT_SECRET;
-  const refreshToken = process.env.ZOHO_REFRESH_TOKEN;
+  // Voice needs its own token: ZOHO_REFRESH_TOKEN is Recruit-scoped and Zoho
+  // Voice rejects it with ZVT022. ZOHO_VOICE_REFRESH_TOKEN has ZohoVoice.call.READ.
+  const refreshToken = process.env.ZOHO_VOICE_REFRESH_TOKEN || process.env.ZOHO_REFRESH_TOKEN;
   if (!clientId || !clientSecret || !refreshToken) {
     throw new Error('Missing Zoho OAuth credentials');
   }
