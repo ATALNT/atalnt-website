@@ -281,10 +281,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (status === 'missed' || status === 'no-answer' || status === 'no answer' || status === 'noanswer' || status === 'no_answer' || status === 'originator_cancel' || type === 'missed') {
         agentStats[agent].missed++;
-      } else if (type.includes('in') || type === 'incoming' || type === 'inbound') {
-        agentStats[agent].inbound++;
-      } else if (type.includes('out') || type === 'outgoing' || type === 'outbound') {
+      } else if (type.startsWith('out')) {
+        // outbound checked first: "outgoing" contains the substring "in"
         agentStats[agent].outbound++;
+      } else if (type.startsWith('in')) {
+        agentStats[agent].inbound++;
       }
     });
 
@@ -308,10 +309,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       if (status === 'missed' || status === 'no-answer' || status === 'no answer' || status === 'noanswer' || status === 'no_answer' || status === 'originator_cancel' || type === 'missed') {
         dailyVolume[date].missed++;
-      } else if (type.includes('in') || type === 'incoming' || type === 'inbound') {
-        dailyVolume[date].inbound++;
-      } else if (type.includes('out') || type === 'outgoing' || type === 'outbound') {
+      } else if (type.startsWith('out')) {
+        // outbound checked first: "outgoing" contains the substring "in"
         dailyVolume[date].outbound++;
+      } else if (type.startsWith('in')) {
+        dailyVolume[date].inbound++;
       }
     });
 
