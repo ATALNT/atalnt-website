@@ -115,7 +115,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authOnly = { Authorization: `Bearer ${apiKey}` };
 
   try {
-    const campaigns = (await fetchAllCampaigns(headers)).filter((c) => c.status !== STATUS_DELETED_CAMPAIGN);
+    // ISOLATED: campaigns (dialer companion for daniel@/gabriel@) are exempt.
+    // Their completed leads are the dedupe record that stops a re-pasted ZoomInfo
+    // list from re-emailing someone — deleting them would erase that memory.
+    const campaigns = (await fetchAllCampaigns(headers)).filter(
+      (c) => c.status !== STATUS_DELETED_CAMPAIGN && !(c.name || '').startsWith('ISOLATED:')
+    );
 
     // Scan campaigns with limited concurrency so we cover all of them within the timeout.
     const perCampaign: { id: string; name: string; deadIds: string[] }[] = [];

@@ -52,6 +52,15 @@ const PROTECTED_WARMUP_ONLY = new Set([
   'jeet@atalntrecruiting.com',
 ]);
 
+// DIALER CARVE-OUT (2026-07-22): daniel@ and gabriel@ run an ISOLATED power-dial
+// companion system (portal-fed, Gemini-personalized, 30/day). They may send ONLY
+// through campaigns whose name starts with "ISOLATED:". Those campaigns are never
+// roster-synced; sends from these two mailboxes inside ISOLATED campaigns are
+// legitimate. Everything else about the 8 protected mailboxes is unchanged.
+const DIALER_SENDERS = new Set(['daniel@atalntcandidates.com', 'gabriel@atalntcandidates.com']);
+const DIALER_LIMIT = 30;
+const isIsolatedName = (n) => (n || '').startsWith('ISOLATED:');
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(m);
 
@@ -155,7 +164,11 @@ async function runOnce(iterIndex = 0) {
   log(`accounts=${accounts.length} roster-eligible(clean,97+,not-quarantined)=${canStay.size} addable(98+)=${canAddFinal.length} error-state=${errorAccounts.length} quarantined=${quarantined.size}`);
 
   // ---- limits belt + never leave anything paused ----
-  const want = (a) => (canStay.has(a.email.toLowerCase()) ? DAILY_LIMIT : 0);
+  const want = (a) => {
+    const em = a.email.toLowerCase();
+    if (DIALER_SENDERS.has(em)) return DIALER_LIMIT;
+    return canStay.has(em) ? DAILY_LIMIT : 0;
+  };
   const fix = accounts.filter((a) => (a.daily_limit ?? -1) !== want(a));
   await inBatches(fix, 10, async (a) => {
     await req(`https://api.instantly.ai/api/v2/accounts/${encodeURIComponent(a.email)}`, { method: 'PATCH', body: JSON.stringify({ daily_limit: want(a) }) });
@@ -168,7 +181,9 @@ async function runOnce(iterIndex = 0) {
   if (fix.length || paused.length) log(`limits_fixed=${fix.length} resumed=${paused.length}`);
 
   // ---- sender-list sync with hysteresis + queue flush ----
-  const campaigns = (await fetchAll('https://api.instantly.ai/api/v2/campaigns')).filter((c) => c.status === 1);
+  const allActive = (await fetchAll('https://api.instantly.ai/api/v2/campaigns')).filter((c) => c.status === 1);
+  const isolatedIds = new Set(allActive.filter((c) => isIsolatedName(c.name)).map((c) => c.id));
+  const campaigns = allActive.filter((c) => !isIsolatedName(c.name));
   for (const c of campaigns) {
     const g = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`);
     if (!g || !g.ok) { problems.push(`cannot read campaign ${c.id}`); continue; }
@@ -246,6 +261,7 @@ async function runOnce(iterIndex = 0) {
     let newest = 0;
     for (const e of d.items || []) {
       if (e.ue_type === 1 && e.campaign_id && (e.eaccount || '').toLowerCase() === em) {
+        if (isolatedIds.has(e.campaign_id) && DIALER_SENDERS.has(em)) continue; // sanctioned dialer send
         const ts = Date.parse(e.timestamp_email || e.timestamp_created || '');
         if (Number.isFinite(ts) && ts > newest) newest = ts;
       }

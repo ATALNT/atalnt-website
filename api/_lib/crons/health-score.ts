@@ -100,6 +100,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       'jessica@atalntrecruiting.com',
       'jeet@atalntrecruiting.com',
     ]);
+    const DIALER_SENDERS = new Set(['daniel@atalntcandidates.com', 'gabriel@atalntcandidates.com']);
+    const DIALER_LIMIT = 30;
     const healthy = new Set(
       accounts
         .filter((a) => (a.stat_warmup_score ?? 0) >= MIN_SCORE && a.status !== -1 && !PROTECTED_WARMUP_ONLY.has(a.email.toLowerCase()))
@@ -107,7 +109,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     );
 
     // 1) Belt: limits (never the off switch, but keeps intent visible + caps healthy at 20)
-    const desired = (a: InstantlyAccount) => (healthy.has(a.email.toLowerCase()) ? dailyLimit : 0);
+    const desired = (a: InstantlyAccount) => {
+      const em = a.email.toLowerCase();
+      if (DIALER_SENDERS.has(em)) return DIALER_LIMIT;
+      return healthy.has(em) ? dailyLimit : 0;
+    };
     const toFix = accounts.filter((a) => (a.daily_limit ?? -1) !== desired(a));
     const BATCH = 15;
     for (let i = 0; i < toFix.length; i += BATCH) {
@@ -129,7 +135,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // 3) THE OFF SWITCH: sync every active campaign's sender list to healthy-only.
     //    Removes sub-97 mailboxes (they cannot send at all), adds back healed ones.
     const campaigns = await fetchAll<InstantlyCampaign>('https://api.instantly.ai/api/v2/campaigns', headers);
-    const active = campaigns.filter((c) => c.status === 1);
+    const active = campaigns.filter((c) => c.status === 1 && !(c.name || '').startsWith('ISOLATED:'));
     const healthyList = accounts
       .filter((a) => healthy.has(a.email.toLowerCase()))
       .map((a) => a.email);
