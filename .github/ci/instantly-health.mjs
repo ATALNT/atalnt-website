@@ -184,6 +184,26 @@ async function runOnce(iterIndex = 0) {
   const allActive = (await fetchAll('https://api.instantly.ai/api/v2/campaigns')).filter((c) => c.status === 1);
   const isolatedIds = new Set(allActive.filter((c) => isIsolatedName(c.name)).map((c) => c.id));
   const campaigns = allActive.filter((c) => !isIsolatedName(c.name));
+
+  // SELF-HEAL ISOLATED campaigns (2026-07-22 incident: a stale-code run stuffed
+  // the whole cold-fleet roster into Daniel's dialer campaign). An ISOLATED
+  // campaign's sender list must be EXACTLY its designated dialer mailbox,
+  // derived from the campaign name. Restore + flush + alert on any drift.
+  for (const c of allActive.filter((x) => isIsolatedName(x.name))) {
+    const designated = [...DIALER_SENDERS].find((em) => (c.name || '').toLowerCase().includes(em.split('@')[0]));
+    if (!designated) continue;
+    const g = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`);
+    if (!g || !g.ok) continue;
+    const full = await g.json();
+    const el = (full.email_list || []).map((e) => e.toLowerCase());
+    if (el.length === 1 && el[0] === designated) continue;
+    await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`, { method: 'PATCH', body: JSON.stringify({ email_list: [designated] }) });
+    await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}/pause`, { method: 'POST', body: '{}' });
+    await sleep(4000);
+    await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}/activate`, { method: 'POST', body: '{}' });
+    log(`  SELF-HEAL ${full.name}: sender list drifted (${el.length} entries), restored to ${designated} + flushed`);
+    problems.push(`ISOLATED campaign "${full.name}" sender list drifted and was restored, investigate what wrote to it`);
+  }
   for (const c of campaigns) {
     const g = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`);
     if (!g || !g.ok) { problems.push(`cannot read campaign ${c.id}`); continue; }
