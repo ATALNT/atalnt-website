@@ -52,12 +52,28 @@ const PROTECTED_WARMUP_ONLY = new Set([
   'jeet@atalntrecruiting.com',
 ]);
 
-// DIALER CARVE-OUT (2026-07-22): daniel@ and gabriel@ run an ISOLATED power-dial
-// companion system (portal-fed, Gemini-personalized, 30/day). They may send ONLY
-// through campaigns whose name starts with "ISOLATED:". Those campaigns are never
-// roster-synced; sends from these two mailboxes inside ISOLATED campaigns are
-// legitimate. Everything else about the 8 protected mailboxes is unchanged.
-const DIALER_SENDERS = new Set(['daniel@atalntcandidates.com', 'gabriel@atalntcandidates.com']);
+// DIALER CARVE-OUT (2026-07-22, extended 2026-08-03): the sales pair (daniel@,
+// gabriel@) and the sourcing/ops six run ISOLATED dial-companion systems
+// (portal-fed, 30/day). They may send ONLY through campaigns whose name starts
+// with "ISOLATED:". Those campaigns are never roster-synced; sends from these
+// mailboxes inside ISOLATED campaigns are legitimate. Everything else about the
+// 8 protected mailboxes is unchanged.
+//
+// ISOLATED_OWNER is the source of truth for the self-heal below: campaign id ->
+// the ONE mailbox allowed to send from it. Explicit ids, not name matching — a
+// substring probe ("dee" in DIALER_SENDERS) can collide with an unrelated
+// campaign name and heal a campaign onto the wrong sender.
+const ISOLATED_OWNER = new Map([
+  ['f55852de-740d-471e-b57c-07fa3115d6c2', 'daniel@atalntcandidates.com'],   // ISOLATED: Daniel Dialer
+  ['d2afdd99-ea82-4847-a150-cb4cc93e0b67', 'gabriel@atalntcandidates.com'],  // ISOLATED: Gabriel Dialer
+  ['b95a285b-00db-4f8c-acc5-f039f164e51d', 'mikee@atalntrecruiting.com'],    // ISOLATED: Mikee Candidate Outreach
+  ['e885013a-cea3-482a-911c-026ba93710c0', 'dee@atalntrecruiting.com'],      // ISOLATED: Dee Candidate Outreach
+  ['df047d8b-3dc5-494a-8c53-9374e35a343b', 'jeet@atalntrecruiting.com'],     // ISOLATED: Jeet Candidate Outreach
+  ['a8c83126-9d82-4596-9fc0-b399ef6eb81b', 'remishka@atalntrecruiting.com'], // ISOLATED: Remishka Candidate Outreach
+  ['a8b06382-1a01-413d-a515-d97953076458', 'kelona@atalntrecruiting.com'],   // ISOLATED: Kelona Candidate Outreach
+  ['e1498c48-6a03-47c9-b4e9-7d1793a6a02d', 'jessica@atalntrecruiting.com'],  // ISOLATED: Jessica Candidate Outreach
+]);
+const DIALER_SENDERS = new Set(ISOLATED_OWNER.values());
 const DIALER_LIMIT = 30;
 const isIsolatedName = (n) => (n || '').startsWith('ISOLATED:');
 
@@ -187,11 +203,16 @@ async function runOnce(iterIndex = 0) {
 
   // SELF-HEAL ISOLATED campaigns (2026-07-22 incident: a stale-code run stuffed
   // the whole cold-fleet roster into Daniel's dialer campaign). An ISOLATED
-  // campaign's sender list must be EXACTLY its designated dialer mailbox,
-  // derived from the campaign name. Restore + flush + alert on any drift.
+  // campaign's sender list must be EXACTLY its designated dialer mailbox, read
+  // from ISOLATED_OWNER. Restore + flush + alert on any drift. An ISOLATED-named
+  // campaign with no entry in the map is unknown to us: it is still exempt from
+  // roster sync, but flag it so a typo'd or rogue name cannot hide there.
   for (const c of allActive.filter((x) => isIsolatedName(x.name))) {
-    const designated = [...DIALER_SENDERS].find((em) => (c.name || '').toLowerCase().includes(em.split('@')[0]));
-    if (!designated) continue;
+    const designated = ISOLATED_OWNER.get(c.id);
+    if (!designated) {
+      problems.push(`unknown ISOLATED campaign "${c.name}" (${c.id}) — not in ISOLATED_OWNER, add it or rename the campaign`);
+      continue;
+    }
     const g = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`);
     if (!g || !g.ok) continue;
     const full = await g.json();

@@ -4,10 +4,11 @@ import { DashboardLogin } from '@/components/dashboard/DashboardLogin';
 import { RecruitDashboard } from '@/components/dashboard/RecruitDashboard';
 import { VoiceDashboard } from '@/components/dashboard/VoiceDashboard';
 import { SalesDashboard } from '@/components/dashboard/SalesDashboard';
+import { SourcingDialer } from '@/components/dashboard/SourcingDialer';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LogOut, RefreshCw, Briefcase, Phone, Signal, TrendingUp } from 'lucide-react';
+import { LogOut, RefreshCw, Briefcase, Phone, Signal, TrendingUp, Voicemail } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
 function getDateRange(preset: string): { from: string; to: string } {
@@ -197,6 +198,13 @@ export default function Dashboard() {
               <TrendingUp className="h-4 w-4" />
               <span className="hidden sm:inline">Sales</span>
             </TabsTrigger>
+            <TabsTrigger
+              value="dialer"
+              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-[#D4A853] data-[state=active]:to-[#b8912e] data-[state=active]:text-black data-[state=active]:font-semibold data-[state=active]:shadow-lg data-[state=active]:shadow-[#D4A853]/20 flex items-center gap-2 px-6 text-white/60 transition-all"
+            >
+              <Voicemail className="h-4 w-4" />
+              <span className="hidden sm:inline">Dialer Emails</span>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="recruit" className="mt-6">
@@ -209,6 +217,11 @@ export default function Dashboard() {
 
           <TabsContent value="sales" className="mt-6">
             <SalesDashboard token={token} datePreset={datePreset} dateRange={dateRange} />
+          </TabsContent>
+
+          {/* Sourcing dial companion — not date-filtered: it is a live queue, not a report. */}
+          <TabsContent value="dialer" className="mt-6">
+            <SourcingDialer token={token} />
           </TabsContent>
         </Tabs>
       </main>

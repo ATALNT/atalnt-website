@@ -100,7 +100,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       'jessica@atalntrecruiting.com',
       'jeet@atalntrecruiting.com',
     ]);
-    const DIALER_SENDERS = new Set(['daniel@atalntcandidates.com', 'gabriel@atalntcandidates.com']);
+    // DIALER CARVE-OUT (2026-07-22, extended 2026-08-03): these mailboxes run
+    // portal-fed ISOLATED: dial-companion campaigns at 30/day. Without this they
+    // fall through to the PROTECTED_WARMUP_ONLY branch and get daily_limit 0,
+    // which starves their campaigns. Mirror of ISOLATED_OWNER in
+    // .github/ci/instantly-health.mjs — keep both lists in sync.
+    const DIALER_SENDERS = new Set([
+      'daniel@atalntcandidates.com',
+      'gabriel@atalntcandidates.com',
+      'mikee@atalntrecruiting.com',
+      'dee@atalntrecruiting.com',
+      'jeet@atalntrecruiting.com',
+      'remishka@atalntrecruiting.com',
+      'kelona@atalntrecruiting.com',
+      'jessica@atalntrecruiting.com',
+    ]);
     const DIALER_LIMIT = 30;
     const healthy = new Set(
       accounts

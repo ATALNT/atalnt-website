@@ -115,9 +115,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authOnly = { Authorization: `Bearer ${apiKey}` };
 
   try {
-    // ISOLATED: campaigns (dialer companion for daniel@/gabriel@) are exempt.
-    // Their completed leads are the dedupe record that stops a re-pasted ZoomInfo
-    // list from re-emailing someone — deleting them would erase that memory.
+    // ISOLATED: campaigns (dial companions: daniel@/gabriel@ for sales, and the
+    // sourcing six on @atalntrecruiting.com) are exempt. Their completed leads are
+    // the dedupe record that stops a re-pasted list from re-emailing someone —
+    // deleting them would erase that memory.
     const campaigns = (await fetchAllCampaigns(headers)).filter(
       (c) => c.status !== STATUS_DELETED_CAMPAIGN && !(c.name || '').startsWith('ISOLATED:')
     );
