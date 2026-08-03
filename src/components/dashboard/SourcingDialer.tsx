@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Voicemail, Users, Send, Loader2, RefreshCw, X, AlertCircle, ClipboardList, Briefcase } from 'lucide-react';
+import { Voicemail, Users, Send, Loader2, RefreshCw, X, AlertCircle, ClipboardList, CheckCircle2 } from 'lucide-react';
 
 // ─── Sourcing dial companion ────────────────────────────────────────────────
 // Recruiters paste the candidates they called and left voicemails for. Each one
 // becomes a lead in that recruiter's ISOLATED: Instantly campaign and gets the
 // 4-email sequence the team already wrote, from the recruiter's own mailbox.
 //
-// The sequence copy lives in Instantly and is never touched from here. This
-// screen only collects the merge-field values that copy expects.
+// Everything comes from the paste — nothing is selected here. Four columns:
+//   recruiter first name | candidate first name | candidate email | job title
+// One paste can cover several recruiters at once.
 
 const REPS = [
   { key: 'mikee', name: 'Mikee' },
@@ -26,31 +27,31 @@ type RepKey = (typeof REPS)[number]['key'];
 const CHUNK = 10;
 
 type Row = {
+  rep: string; // resolved rep key, or '' when the recruiter was not recognised
+  repRaw: string; // what the paste actually said, for the error message
   firstName: string;
-  lastName: string;
   email: string;
-  company: string;
-  title: string;
-  specificExperience: string;
+  jobTitle: string;
   valid: boolean;
   reason?: string;
 };
 
-type JobFields = {
-  jobTitle: string;
-  bullet1: string;
-  bullet2: string;
-  bullet3: string;
-  usp: string;
-  specificExperience: string;
-};
+const EMAIL_RE = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
-const EMPTY_JOB: JobFields = { jobTitle: '', bullet1: '', bullet2: '', bullet3: '', usp: '', specificExperience: '' };
+// Resolve whatever the recruiter column says to a rep key: "Mikee", "mikee",
+// "Mikee Gagarin", "mikee@atalntrecruiting.com" all land on the same person.
+function resolveRep(raw: string): string {
+  const v = (raw || '').trim().toLowerCase();
+  if (!v) return '';
+  const local = v.includes('@') ? v.split('@')[0] : v;
+  const first = local.split(/[\s.]+/)[0];
+  const hit = REPS.find((r) => r.key === first || r.key === local || r.name.toLowerCase() === first);
+  return hit ? hit.key : '';
+}
 
 // ─── Paste parsing ──────────────────────────────────────────────────────────
 // Handles tab-separated (copied straight out of Excel), CSV, and 2+ space
-// separated pastes, with or without a header row. Headerless pastes get their
-// columns detected by content.
+// separated pastes, with or without a header row.
 function parsePaste(raw: string): Row[] {
   const text = raw.replace(/\r\n?/g, '\n').trim();
   if (!text) return [];
@@ -82,51 +83,49 @@ function parsePaste(raw: string): Row[] {
     return out;
   };
 
-  const emailRe = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
   const firstCells = parseLine(lines[0]).map((h) => h.trim().toLowerCase());
-  const exactHeader = firstCells.some((h) =>
-    ['first name', 'firstname', 'email', 'work email', 'company name', 'company', 'job title', 'title'].includes(h)
-  );
-  const fuzzyHeader =
-    !firstCells.some((h) => emailRe.test(h)) &&
-    firstCells.some((h) => ['first name', 'last name', 'email', 'company', 'job title', 'title'].some((f) => h.includes(f)));
+  const looksLikeHeader =
+    !firstCells.some((h) => EMAIL_RE.test(h)) &&
+    firstCells.some((h) =>
+      ['recruiter', 'first name', 'firstname', 'email', 'job title', 'jobtitle', 'title', 'personalization'].some((f) => h.includes(f))
+    );
 
   let dataLines: string[];
-  let col: Record<string, number>;
+  let col: { rep: number; first: number; email: number; job: number };
 
-  if (exactHeader || fuzzyHeader) {
+  if (looksLikeHeader) {
     const header = firstCells;
-    const findCol = (...names: string[]) => {
-      for (const n of names) {
-        const i = header.indexOf(n);
-        if (i !== -1) return i;
-      }
-      return -1;
-    };
-    const fuzzyCol = (...frags: string[]) => {
+    const find = (...frags: string[]) => {
       for (const f of frags) {
         const i = header.findIndex((h) => h.includes(f));
         if (i !== -1) return i;
       }
       return -1;
     };
-    col = {
-      first: findCol('first name', 'firstname', 'first'),
-      last: findCol('last name', 'lastname', 'last'),
-      email: findCol('email', 'work email', 'email address', 'personal email'),
-      company: findCol('company name', 'company', 'current company', 'employer'),
-      title: findCol('job title', 'title', 'current title'),
-      experience: findCol('specific experience', 'experience', 'skills', 'notes'),
-    };
-    if (col.first === -1) col.first = fuzzyCol('first');
-    if (col.last === -1) col.last = fuzzyCol('last');
-    if (col.email === -1) col.email = fuzzyCol('email', 'e-mail');
-    if (col.company === -1) col.company = fuzzyCol('company', 'employer', 'organization');
-    if (col.title === -1) col.title = fuzzyCol('title', 'position', 'role');
-    if (col.experience === -1) col.experience = fuzzyCol('experience', 'skill', 'note');
+    // Recruiter before candidate: "recruiter first name" contains "first name"
+    // too, so claim the recruiter column first and exclude it afterwards.
+    const repCol = find('recruiter', 'sender', 'sent by', 'owner', 'assigned');
+    const jobCol = find('job title', 'jobtitle', 'personalization', 'role', 'position', 'title');
+    let firstCol = -1;
+    for (let i = 0; i < header.length; i++) {
+      if (i === repCol || i === jobCol) continue;
+      if (header[i].includes('first') || header[i].includes('candidate') || header[i].includes('name')) {
+        firstCol = i;
+        break;
+      }
+    }
+    let emailCol = -1;
+    for (let i = 0; i < header.length; i++) {
+      if (i === repCol || i === jobCol || i === firstCol) continue;
+      if (header[i].includes('email') || header[i].includes('e-mail')) {
+        emailCol = i;
+        break;
+      }
+    }
+    col = { rep: repCol, first: firstCol, email: emailCol, job: jobCol };
     dataLines = lines.slice(1);
   } else {
-    // ── Headerless: detect columns by content ──
+    // ── Headerless: detect by content ──
     dataLines = lines;
     const sample = dataLines.slice(0, 30).map(parseLine);
     const nCols = Math.max(...sample.map((r) => r.length));
@@ -136,78 +135,33 @@ function parsePaste(raw: string): Row[] {
         if (!filled.length) return 0;
         return filled.filter(fn).length / filled.length;
       });
-    const emptyFrac = Array.from({ length: nCols }, (_, i) => {
-      const cells = sample.map((r) => (r[i] || '').trim());
-      return cells.filter((c) => !c).length / cells.length;
-    });
 
-    const STATES = new Set([
-      'alabama','alaska','arizona','arkansas','california','colorado','connecticut','delaware','florida','georgia','hawaii','idaho','illinois','indiana','iowa','kansas','kentucky','louisiana','maine','maryland','massachusetts','michigan','minnesota','mississippi','missouri','montana','nebraska','nevada','new hampshire','new jersey','new mexico','new york','north carolina','north dakota','ohio','oklahoma','oregon','pennsylvania','rhode island','south carolina','south dakota','tennessee','texas','utah','vermont','virginia','washington','west virginia','wisconsin','wyoming',
-    ]);
+    const emailF = frac((c) => EMAIL_RE.test(c));
+    const repF = frac((c) => !!resolveRep(c));
+    // A job title is texty, multi-word, and repeats across rows far more than a
+    // person's name does.
+    const jobF = frac((c) => !EMAIL_RE.test(c) && !resolveRep(c) && /\s/.test(c) && c.length > 5);
+    const nameF = frac((c) => !EMAIL_RE.test(c) && !resolveRep(c) && /^[A-Za-z][A-Za-z'-]{1,20}$/.test(c));
 
-    const emailF = frac((c) => emailRe.test(c));
-    const urlF = frac((c) => /https?:\/\/|linkedin\.|indeed\./i.test(c));
-    const phoneF = frac((c) => (c.match(/\d/g) || []).length >= 7 && /^[\d\s()\-.+ext]+$/i.test(c));
-    const numericF = frac((c) => /^[\d,.$ ]+$/.test(c));
-    const jsonF = frac((c) => /^[[{]/.test(c));
-    const stateF = frac((c) => STATES.has(c.toLowerCase()));
-    const countryF = frac((c) => /^(united states|usa|canada|united kingdom|india|philippines)$/i.test(c));
-    const titleF = frac(
-      (c) =>
-        /engineer|manager|director|analyst|specialist|coordinator|supervisor|technician|driver|dispatcher|operator|planner|clerk|foreman|superintendent|estimator|accountant|developer|architect|sales|president|officer|lead|head of/i.test(c) &&
-        !emailRe.test(c)
-    );
-    const singleWordF = frac((c) => /^[A-Za-z][A-Za-z'-]{1,15}$/.test(c));
-    const companyTokenF = frac((c) =>
-      /(inc|llc|corp|company|group|construction|services|engineering|solutions|associates|partners|builders|contracting|logistics|transport|freight)\b/i.test(c)
-    );
-
-    const used = new Set<number>();
-    for (let i = 0; i < nCols; i++) if (urlF[i] > 0.3 || phoneF[i] > 0.3 || jsonF[i] > 0.2) used.add(i);
-
-    const pick = (scores: number[], min: number, extra?: (i: number) => boolean) => {
-      let best = -1;
-      let bestV = min;
+    const best = (scores: number[], min: number, taken: Set<number>) => {
+      let bi = -1;
+      let bv = min;
       for (let i = 0; i < nCols; i++) {
-        if (used.has(i) || urlF[i] > 0.3 || phoneF[i] > 0.3 || numericF[i] > 0.5 || jsonF[i] > 0.2) continue;
-        if (extra && !extra(i)) continue;
-        if (scores[i] > bestV) {
-          best = i;
-          bestV = scores[i];
+        if (taken.has(i)) continue;
+        if (scores[i] > bv) {
+          bi = i;
+          bv = scores[i];
         }
       }
-      if (best !== -1) used.add(best);
-      return best;
+      if (bi !== -1) taken.add(bi);
+      return bi;
     };
-
-    const emailCol = pick(emailF, 0.4);
-    const titleCol = pick(titleF, 0.3);
-    let firstCol = -1;
-    let lastCol = -1;
-    for (let i = 0; i < nCols; i++) {
-      if (used.has(i) || countryF[i] > 0.3 || stateF[i] > 0.3) continue;
-      if (singleWordF[i] > 0.7 && emptyFrac[i] < 0.4) {
-        if (firstCol === -1) {
-          firstCol = i;
-          used.add(i);
-        } else if (lastCol === -1 && i > firstCol) {
-          lastCol = i;
-          used.add(i);
-          break;
-        }
-      }
-    }
-    let companyCol = pick(companyTokenF, 0.15, (i) => countryF[i] < 0.3 && stateF[i] < 0.3);
-    if (companyCol === -1) {
-      const avgLen = Array.from({ length: nCols }, (_, i) => {
-        if (used.has(i) || countryF[i] > 0.3 || numericF[i] > 0.3 || emptyFrac[i] > 0.5) return 0;
-        const cells = sample.map((r) => (r[i] || '').trim()).filter(Boolean);
-        return cells.length ? cells.reduce((s, c) => s + Math.min(c.length, 40), 0) / cells.length : 0;
-      });
-      companyCol = pick(avgLen, 5, (i) => countryF[i] < 0.3 && stateF[i] < 0.3);
-    }
-
-    col = { first: firstCol, last: lastCol, email: emailCol, company: companyCol, title: titleCol, experience: -1 };
+    const taken = new Set<number>();
+    const repCol = best(repF, 0.5, taken);
+    const emailCol = best(emailF, 0.5, taken);
+    const firstCol = best(nameF, 0.5, taken);
+    const jobCol = best(jobF, 0.4, taken);
+    col = { rep: repCol, first: firstCol, email: emailCol, job: jobCol };
     if (col.email === -1) return [];
   }
 
@@ -215,21 +169,27 @@ function parsePaste(raw: string): Row[] {
   for (const line of dataLines) {
     const cells = parseLine(line);
     const get = (i: number) => (i >= 0 && i < cells.length ? cells[i].trim() : '');
+    const repRaw = get(col.rep);
     const row: Row = {
+      rep: resolveRep(repRaw),
+      repRaw,
       firstName: get(col.first),
-      lastName: get(col.last),
       email: get(col.email),
-      company: get(col.company),
-      title: get(col.title),
-      specificExperience: get(col.experience),
+      jobTitle: get(col.job),
       valid: true,
     };
-    if (!row.email || !emailRe.test(row.email)) {
+    if (!row.email || !EMAIL_RE.test(row.email)) {
       row.valid = false;
       row.reason = 'no valid email';
     } else if (!row.firstName) {
       row.valid = false;
       row.reason = 'missing first name';
+    } else if (!row.rep) {
+      row.valid = false;
+      row.reason = repRaw ? `unknown recruiter "${repRaw}"` : 'missing recruiter';
+    } else if (!row.jobTitle) {
+      row.valid = false;
+      row.reason = 'missing job title';
     }
     rows.push(row);
   }
@@ -238,8 +198,6 @@ function parsePaste(raw: string): Row[] {
 
 // ─── Component ──────────────────────────────────────────────────────────────
 export function SourcingDialer({ token }: { token: string }) {
-  const [rep, setRep] = useState<RepKey>('mikee');
-  const [job, setJob] = useState<JobFields>(EMPTY_JOB);
   const [paste, setPaste] = useState('');
   const [rows, setRows] = useState<Row[]>([]);
   const [running, setRunning] = useState(false);
@@ -250,8 +208,9 @@ export function SourcingDialer({ token }: { token: string }) {
   const [status, setStatus] = useState<any[]>([]);
   const [statusErr, setStatusErr] = useState('');
   const [statusLoading, setStatusLoading] = useState(true);
+  const [readiness, setReadiness] = useState<Record<string, { ready: boolean; missing: string[] }>>({});
 
-  const [queueRep, setQueueRep] = useState<RepKey>('mikee');
+  const [queueRep, setQueueRep] = useState<RepKey>('remishka');
   const [queue, setQueue] = useState<any[]>([]);
   const [queueLoading, setQueueLoading] = useState(false);
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
@@ -270,9 +229,22 @@ export function SourcingDialer({ token }: { token: string }) {
     setStatusLoading(false);
   }, [token]);
 
+  const loadReadiness = useCallback(async () => {
+    try {
+      const res = await fetch('/api/instantly/dialer?action=readiness', { headers: { Authorization: `Bearer ${token}` } });
+      const d = await res.json();
+      const map: Record<string, { ready: boolean; missing: string[] }> = {};
+      for (const r of d.reps || []) map[r.rep] = { ready: !!r.ready, missing: r.missing || [] };
+      setReadiness(map);
+    } catch {
+      /* readiness is advisory in the UI; the server re-checks before creating anything */
+    }
+  }, [token]);
+
   useEffect(() => {
     loadStatus();
-  }, [loadStatus]);
+    loadReadiness();
+  }, [loadStatus, loadReadiness]);
 
   const loadQueue = useCallback(
     async (r: RepKey) => {
@@ -317,47 +289,38 @@ export function SourcingDialer({ token }: { token: string }) {
 
   const handlePaste = (text: string) => {
     setPaste(text);
-    const parsed = parsePaste(text);
-    // Rows without their own experience note inherit the batch default.
-    setRows(parsed.map((r) => ({ ...r, specificExperience: r.specificExperience || job.specificExperience })));
+    setRows(parsePaste(text));
     setResults([]);
     setSubmitError('');
   };
 
-  const setRowExperience = (i: number, value: string) => {
-    setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, specificExperience: value } : r)));
-  };
-
-  const jobMissing = (Object.keys(EMPTY_JOB) as (keyof JobFields)[]).filter((k) => !job[k].trim());
   const validRows = rows.filter((r) => r.valid);
-  const canSubmit = validRows.length > 0 && jobMissing.length === 0 && !running;
+  // Rows whose recruiter's sequence still needs fields a paste cannot fill.
+  const blocked = validRows.filter((r) => readiness[r.rep] && !readiness[r.rep].ready);
+  const sendable = validRows.filter((r) => !readiness[r.rep] || readiness[r.rep].ready);
+  const byRep = sendable.reduce((m: Record<string, number>, r) => {
+    m[r.rep] = (m[r.rep] || 0) + 1;
+    return m;
+  }, {});
+  const blockedReps = [...new Set(blocked.map((r) => r.rep))];
 
   const submit = async () => {
-    if (!canSubmit) return;
+    if (!sendable.length || running) return;
     setRunning(true);
     setResults([]);
     setSubmitError('');
-    setProgress({ done: 0, total: validRows.length });
+    setProgress({ done: 0, total: sendable.length });
 
     const all: any[] = [];
-    for (let i = 0; i < validRows.length; i += CHUNK) {
-      const chunk = validRows.slice(i, i + CHUNK);
+    for (let i = 0; i < sendable.length; i += CHUNK) {
+      const chunk = sendable.slice(i, i + CHUNK);
       try {
         const res = await fetch('/api/instantly/dialer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({
             action: 'add',
-            rep,
-            job,
-            leads: chunk.map((c) => ({
-              firstName: c.firstName,
-              lastName: c.lastName,
-              email: c.email,
-              company: c.company,
-              title: c.title,
-              specificExperience: c.specificExperience,
-            })),
+            leads: chunk.map((c) => ({ rep: c.rep, firstName: c.firstName, email: c.email, jobTitle: c.jobTitle })),
           }),
         });
         const d = await res.json();
@@ -367,14 +330,14 @@ export function SourcingDialer({ token }: { token: string }) {
         }
         all.push(...(d.results || []));
       } catch {
-        all.push(...chunk.map((c) => ({ email: c.email, outcome: 'failed_request' })));
+        all.push(...chunk.map((c) => ({ email: c.email, rep: c.rep, outcome: 'failed_request' })));
       }
-      setProgress({ done: Math.min(i + CHUNK, validRows.length), total: validRows.length });
+      setProgress({ done: Math.min(i + CHUNK, sendable.length), total: sendable.length });
       setResults([...all]);
     }
     setRunning(false);
     loadStatus();
-    if (queueRep === rep) loadQueue(rep);
+    loadQueue(queueRep);
   };
 
   const counts = results.reduce((m: Record<string, number>, r) => {
@@ -406,35 +369,14 @@ export function SourcingDialer({ token }: { token: string }) {
     replied: 'text-emerald-400/90',
     bounced: 'text-red-400/70',
   };
-
-  const jobField = (key: keyof JobFields, label: string, placeholder: string, textarea = false) => (
-    <div className="space-y-1.5">
-      <label className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/30">{label}</label>
-      {textarea ? (
-        <textarea
-          value={job[key]}
-          onChange={(e) => setJob((j) => ({ ...j, [key]: e.target.value }))}
-          placeholder={placeholder}
-          rows={2}
-          className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 focus:outline-none focus:border-[#D4A853]/40 placeholder:text-white/20 resize-none"
-        />
-      ) : (
-        <input
-          value={job[key]}
-          onChange={(e) => setJob((j) => ({ ...j, [key]: e.target.value }))}
-          placeholder={placeholder}
-          className="w-full bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white/80 focus:outline-none focus:border-[#D4A853]/40 placeholder:text-white/20"
-        />
-      )}
-    </div>
-  );
+  const repName = (k: string) => REPS.find((r) => r.key === k)?.name || k;
 
   return (
     <div className="space-y-6">
       {/* ── Per-recruiter status ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {(status.length ? status : REPS.map((r) => ({ rep: r.key, name: r.name }))).map((s: any) => {
-          const cold = s.mailboxScore != null && s.mailboxScore < 97;
+          const rd = readiness[s.rep];
           return (
             <div key={s.rep} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 backdrop-blur-sm">
               <div className="flex items-center justify-between gap-2">
@@ -467,12 +409,20 @@ export function SourcingDialer({ token }: { token: string }) {
                   <span className="text-white/60 font-semibold">{s.sentMonth ?? 0}</span>
                 </span>
                 {s.mailboxScore != null && (
-                  <span className={cold ? 'text-amber-400/80' : 'text-emerald-400/70'}>health {s.mailboxScore}</span>
+                  <span className={s.mailboxScore < 97 ? 'text-amber-400/80' : 'text-emerald-400/70'}>health {s.mailboxScore}</span>
                 )}
               </div>
-              {s.campaignStatus === 0 && (
-                <p className="mt-2 text-[11px] text-white/30">Campaign is a draft. It goes live the first time you queue candidates.</p>
-              )}
+              {rd && !rd.ready ? (
+                <p className="mt-2 text-[11px] text-amber-400/80 flex items-start gap-1.5">
+                  <AlertCircle className="h-3 w-3 shrink-0 mt-0.5" />
+                  <span>Sequence still needs {rd.missing.join(', ')}. Uploads are blocked until it uses only first name and personalization.</span>
+                </p>
+              ) : rd ? (
+                <p className="mt-2 text-[11px] text-emerald-400/60 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3 w-3 shrink-0" />
+                  Ready for uploads
+                </p>
+              ) : null}
             </div>
           );
         })}
@@ -480,55 +430,25 @@ export function SourcingDialer({ token }: { token: string }) {
       {statusErr && <p className="text-xs text-red-400/70">{statusErr}</p>}
 
       {/* ── Upload ── */}
-      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-5 backdrop-blur-sm">
-        <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-4 backdrop-blur-sm">
+        <div>
           <p className="text-sm font-semibold text-white flex items-center gap-2">
             <Voicemail className="h-4 w-4 text-[#D4A853]" />
-            Add candidates you left voicemails for
+            Paste your candidates
           </p>
-          <select
-            value={rep}
-            onChange={(e) => setRep(e.target.value as RepKey)}
-            className="bg-[#12131a] border border-white/[0.08] text-white text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#D4A853]/50"
-          >
-            {REPS.map((r) => (
-              <option key={r.key} value={r.key}>
-                Send as {r.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Job details — these fill the merge fields in the existing sequence */}
-        <div className="rounded-lg border border-white/[0.06] bg-white/[0.015] p-4 space-y-4">
-          <p className="text-xs font-semibold text-white/70 flex items-center gap-2">
-            <Briefcase className="h-3.5 w-3.5 text-[#D4A853]" />
-            The role these candidates are being contacted about
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {jobField('jobTitle', 'Job title', 'Regional Fleet Maintenance Manager')}
-            {jobField('specificExperience', 'Specific experience (default)', 'running multi-site diesel shops')}
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            {jobField('bullet1', 'Bullet 1', 'Direct hire, full benefits from day one', true)}
-            {jobField('bullet2', 'Bullet 2', 'Reports straight to the VP of Operations', true)}
-            {jobField('bullet3', 'Bullet 3', 'Relocation covered, base plus bonus', true)}
-          </div>
-          {jobField('usp', 'Unique selling point', 'they promote from within and the last two RMs moved up in 18 months', true)}
-          <p className="text-[11px] text-white/25">
-            These fill the blanks in the sequence your team already wrote. Every field is required, otherwise the email would send with a
-            visible placeholder in it. Specific experience can be overridden per candidate below.
+          <p className="text-[11px] text-white/30 mt-1">
+            Four columns, any order: recruiter first name, candidate first name, candidate email, job title. The job title becomes the
+            personalization in Instantly. Nothing to select, one paste can cover several recruiters.
           </p>
         </div>
 
-        {/* Paste */}
         <textarea
           value={paste}
           onChange={(e) => handlePaste(e.target.value)}
           placeholder={
-            'Paste your candidate list here. Header row optional, the columns are detected automatically.\nCSV or rows copied straight out of Excel both work. Each row needs an email and a first name.'
+            'Recruiter,First Name,Email,Job Title\nRemishka,Marcus,marcus.holloway@gulfcoastfleet.com,Regional Fleet Maintenance Manager\nRemishka,Priya,priya.raman@meridiantransport.com,Diesel Shop Supervisor'
           }
-          rows={6}
+          rows={7}
           className="w-full bg-black/30 border border-white/[0.08] rounded-lg p-3 text-xs text-white/80 font-mono focus:outline-none focus:border-[#D4A853]/40 placeholder:text-white/20"
         />
 
@@ -536,8 +456,8 @@ export function SourcingDialer({ token }: { token: string }) {
           <div className="flex items-start gap-2 text-xs text-amber-300/90 bg-amber-500/[0.06] border border-amber-500/20 rounded-lg px-3 py-2.5">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
             <span>
-              No email column found in that paste, so there is nothing to queue yet. Copy the rows straight out of Excel or your export (tab
-              or comma separated) and make sure every row has an email address. A header row is fine but optional.
+              No email column found in that paste. Copy the rows straight out of Excel or your CSV and make sure each row has a recruiter
+              name, a candidate first name, an email, and a job title. A header row is fine but optional.
             </span>
           </div>
         )}
@@ -548,54 +468,67 @@ export function SourcingDialer({ token }: { token: string }) {
               <table className="w-full text-xs">
                 <thead className="bg-white/[0.03] text-white/40 sticky top-0">
                   <tr>
+                    <th className="text-left px-2 py-1.5 font-medium">Recruiter</th>
                     <th className="text-left px-2 py-1.5 font-medium">Candidate</th>
-                    <th className="text-left px-2 py-1.5 font-medium">Company</th>
-                    <th className="text-left px-2 py-1.5 font-medium">Specific experience</th>
+                    <th className="text-left px-2 py-1.5 font-medium">Job title (personalization)</th>
                     <th className="text-left px-2 py-1.5 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, i) => (
-                    <tr key={i} className="border-t border-white/[0.04]">
-                      <td className="px-2 py-1.5">
-                        <div className="text-white/75">
-                          {r.firstName} {r.lastName}
-                        </div>
-                        <div className="text-white/35">{r.email || '(no email)'}</div>
-                      </td>
-                      <td className="px-2 py-1.5 text-white/50">{r.company}</td>
-                      <td className="px-2 py-1.5">
-                        <input
-                          value={r.specificExperience}
-                          onChange={(e) => setRowExperience(i, e.target.value)}
-                          placeholder={job.specificExperience || 'inherits the default above'}
-                          className="w-full bg-transparent border border-transparent hover:border-white/[0.08] focus:border-[#D4A853]/40 rounded px-1.5 py-1 text-white/60 focus:outline-none placeholder:text-white/20"
-                        />
-                      </td>
-                      <td className="px-2 py-1.5">
-                        {r.valid ? <span className="text-emerald-400/80">ready</span> : <span className="text-red-400/70">{r.reason}</span>}
-                      </td>
-                    </tr>
-                  ))}
+                  {rows.map((r, i) => {
+                    const notReady = r.valid && readiness[r.rep] && !readiness[r.rep].ready;
+                    return (
+                      <tr key={i} className="border-t border-white/[0.04]">
+                        <td className="px-2 py-1.5 text-white/70">{r.rep ? repName(r.rep) : r.repRaw || '–'}</td>
+                        <td className="px-2 py-1.5">
+                          <div className="text-white/75">{r.firstName}</div>
+                          <div className="text-white/35">{r.email || '(no email)'}</div>
+                        </td>
+                        <td className="px-2 py-1.5 text-white/55">{r.jobTitle}</td>
+                        <td className="px-2 py-1.5">
+                          {!r.valid ? (
+                            <span className="text-red-400/70">{r.reason}</span>
+                          ) : notReady ? (
+                            <span className="text-amber-400/80">sequence not ready</span>
+                          ) : (
+                            <span className="text-emerald-400/80">ready</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
 
-            {jobMissing.length > 0 && (
+            {blockedReps.length > 0 && (
               <div className="flex items-start gap-2 text-xs text-amber-300/90 bg-amber-500/[0.06] border border-amber-500/20 rounded-lg px-3 py-2.5">
                 <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>Fill in the role details first. Still empty: {jobMissing.join(', ')}.</span>
+                <span>
+                  {blocked.length} row{blocked.length === 1 ? '' : 's'} held back for {blockedReps.map(repName).join(', ')}. Those sequences
+                  still use merge fields this paste cannot fill, so the emails would send with a visible placeholder. They will queue
+                  automatically once the sequence is updated.
+                </span>
               </div>
             )}
 
             <div className="flex items-center justify-between flex-wrap gap-3">
               <p className="text-xs text-white/40">
-                {validRows.length} of {rows.length} rows ready. Each gets the 4-email sequence from{' '}
-                {REPS.find((r) => r.key === rep)?.name}, 30/day, stops on reply.
+                {sendable.length} of {rows.length} rows ready
+                {Object.keys(byRep).length > 0 && (
+                  <>
+                    {' '}
+                    ·{' '}
+                    {Object.entries(byRep)
+                      .map(([k, n]) => `${n} to ${repName(k)}`)
+                      .join(', ')}
+                  </>
+                )}
+                . Each gets the 4-email sequence from their own mailbox, 30/day, stops on reply.
               </p>
               <button
                 onClick={submit}
-                disabled={!canSubmit}
+                disabled={!sendable.length || running}
                 className="flex items-center gap-2 bg-gradient-to-r from-[#D4A853] to-[#b8912e] text-black text-sm font-semibold rounded-lg px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:shadow-lg hover:shadow-[#D4A853]/20"
               >
                 {running ? (
@@ -606,7 +539,7 @@ export function SourcingDialer({ token }: { token: string }) {
                 ) : (
                   <>
                     <Send className="h-4 w-4" />
-                    Queue {validRows.length} candidate{validRows.length === 1 ? '' : 's'}
+                    Queue {sendable.length} candidate{sendable.length === 1 ? '' : 's'}
                   </>
                 )}
               </button>
@@ -622,16 +555,34 @@ export function SourcingDialer({ token }: { token: string }) {
         )}
 
         {results.length > 0 && (
-          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 space-y-1.5">
             <p className="text-xs text-white/60">
               <span className="text-emerald-400/90 font-semibold">{counts.added || 0} queued</span>
               {counts.skipped_duplicate ? <span className="text-white/40"> · {counts.skipped_duplicate} already in Instantly</span> : null}
               {counts.skipped_bad_email ? <span className="text-white/40"> · {counts.skipped_bad_email} bad email</span> : null}
               {counts.skipped_no_first_name ? <span className="text-white/40"> · {counts.skipped_no_first_name} no first name</span> : null}
-              {(counts.failed_create || 0) + (counts.failed_request || 0) ? (
-                <span className="text-red-400/70"> · {(counts.failed_create || 0) + (counts.failed_request || 0)} failed</span>
+              {counts.skipped_no_job_title ? <span className="text-white/40"> · {counts.skipped_no_job_title} no job title</span> : null}
+              {counts.skipped_unknown_recruiter ? (
+                <span className="text-white/40"> · {counts.skipped_unknown_recruiter} unknown recruiter</span>
+              ) : null}
+              {counts.skipped_campaign_not_ready ? (
+                <span className="text-amber-400/80"> · {counts.skipped_campaign_not_ready} sequence not ready</span>
+              ) : null}
+              {(counts.failed_create || 0) + (counts.failed_request || 0) + (counts.failed_activate || 0) ? (
+                <span className="text-red-400/70">
+                  {' '}
+                  · {(counts.failed_create || 0) + (counts.failed_request || 0) + (counts.failed_activate || 0)} failed
+                </span>
               ) : null}
             </p>
+            {results
+              .filter((r) => r.detail)
+              .slice(0, 3)
+              .map((r, i) => (
+                <p key={i} className="text-[11px] text-white/35">
+                  {r.detail}
+                </p>
+              ))}
           </div>
         )}
       </div>
@@ -669,16 +620,15 @@ export function SourcingDialer({ token }: { token: string }) {
 
         {queue.length === 0 ? (
           <p className="text-xs text-white/30 py-6 text-center">
-            {queueLoading ? 'Loading...' : `No candidates in ${REPS.find((r) => r.key === queueRep)?.name}'s queue yet.`}
+            {queueLoading ? 'Loading...' : `No candidates in ${repName(queueRep)}'s queue yet.`}
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs min-w-[720px]">
+            <table className="w-full text-xs min-w-[640px]">
               <thead className="text-white/35 border-b border-white/[0.06]">
                 <tr>
                   <th className="text-left font-medium px-2 py-2">Candidate</th>
-                  <th className="text-left font-medium px-2 py-2">Company</th>
-                  <th className="text-left font-medium px-2 py-2">Role</th>
+                  <th className="text-left font-medium px-2 py-2">Job title</th>
                   <th className="text-left font-medium px-2 py-2">Added</th>
                   <th className="text-center font-medium px-2 py-2">Step</th>
                   <th className="text-left font-medium px-2 py-2">Next email</th>
@@ -693,8 +643,7 @@ export function SourcingDialer({ token }: { token: string }) {
                       <div className="text-white/80">{l.name || '(no name)'}</div>
                       <div className="text-white/35">{l.email}</div>
                     </td>
-                    <td className="px-2 py-2 text-white/55">{l.company}</td>
-                    <td className="px-2 py-2 text-white/45">{l.jobTitle || '–'}</td>
+                    <td className="px-2 py-2 text-white/55">{l.jobTitle || '–'}</td>
                     <td className="px-2 py-2 text-white/45">{fmtDate(l.uploaded)}</td>
                     <td className="px-2 py-2 text-center">
                       <span className="inline-flex items-center gap-1">

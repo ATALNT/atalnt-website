@@ -1,26 +1,32 @@
 // ============================================
 // /api/instantly/dialer  (dashboard auth required)
 //
-// Sourcing/ops dial companion. The six recruiters paste the candidates they have
-// called and left voicemails for; each candidate is created as a lead in that
+// Sourcing/ops dial companion. Recruiters paste the candidates they have called
+// and left voicemails for; each candidate is created as a lead in that
 // recruiter's own ISOLATED: Instantly campaign and receives the 4-email sequence
 // the team already wrote, sent from that recruiter's own mailbox (30/day, stops
 // on reply).
 //
-// The sequence copy lives in Instantly and is NEVER touched from here. This
-// endpoint only supplies the merge-field values the copy expects:
-//   {{JobTitle}} {{Bullet 1}} {{Bullet 2}} {{Bullet 3}}
-//   {{Unique Selling Point}} {{Specific Experience}}
-// {{firstName}} and {{sendingAccountName}} are filled by Instantly itself.
+// Everything comes from the pasted rows — nothing is selected in the UI. One
+// paste can cover several recruiters at once:
+//   recruiter first name | candidate first name | candidate email | job title
+//
+// The sequence copy lives in Instantly and is NEVER touched from here. The job
+// title is written BOTH as Instantly's top-level `personalization` (what the
+// current copy reads, e.g. "this {{personalization}} opportunity") and as the
+// `JobTitle` custom variable (what the older copy reads). One column, both
+// shapes, no campaign edits required.
 //
 // GET  ?action=status                  -> per-rep queue + send stats
+// GET  ?action=readiness               -> per-rep: can this campaign be fed yet?
 // GET  ?action=list&rep=<key>          -> that rep's leads with step/state
-// POST { action:'add', rep, job, leads:[...] }   (max 25 leads per request)
+// POST { action:'add', leads:[{rep, firstName, email, jobTitle}] }  (max 25)
 // POST { action:'delete', id }
 //
-// Safety rails carried over from the sales dialer:
-//  - every merge value validated non-empty before a lead is created, so the
-//    sequence can never send with a raw "{{Bullet 2}}" in the body
+// Safety rails:
+//  - a campaign is read at add time and rows are REFUSED if its sequence needs a
+//    merge field the paste cannot supply, so an email can never go out showing a
+//    literal "{{Bullet 2}}" to a candidate
 //  - dedupe against the ENTIRE Instantly account (cold campaigns included), so a
 //    candidate already being emailed by a cold campaign is never double-touched
 // ============================================
@@ -43,11 +49,24 @@ const REPS: Record<string, { email: string; name: string; campaignId: string }> 
   jessica: { email: 'jessica@atalntrecruiting.com', name: 'Jessica', campaignId: 'e1498c48-6a03-47c9-b4e9-7d1793a6a02d' },
 };
 
+// Merge fields a pasted row can satisfy, plus the ones Instantly fills itself.
+// Any OTHER {{variable}} in a sequence means that campaign cannot be fed from
+// this portal yet — it would send with a visible placeholder.
+const SUPPLIED_VARS = new Set([
+  'firstName',
+  'lastName',
+  'email',
+  'companyName',
+  'personalization', // <- the job title column
+  'JobTitle', // <- same column, older copy reads this name
+  'sendingAccountName', // <- Instantly substitutes the sending mailbox's name
+]);
+
 const DAILY_CAP = 30;
 const SEQUENCE_STEPS = 4;
 const MAX_LEADS_PER_REQUEST = 25;
 
-// Sending window — must match the campaign_schedule on all six campaigns
+// Sending window — must match the campaign_schedule on the six campaigns
 // (Asia/Kolkata, 09:00-17:00, Mon-Fri). Used only to estimate "next email".
 const TIMEZONE = 'Asia/Kolkata';
 const WINDOW_START = 9;
@@ -56,21 +75,10 @@ const WINDOW_END = 17;
 const EMAIL_RE = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
 interface LeadInput {
+  rep: string;
   firstName: string;
-  lastName?: string;
   email: string;
-  company?: string;
-  title?: string;
-  specificExperience?: string;
-}
-
-interface JobInput {
   jobTitle: string;
-  bullet1: string;
-  bullet2: string;
-  bullet3: string;
-  usp: string;
-  specificExperience: string;
 }
 
 // ── Auth (inlined, matching the other api/instantly handlers) ────────────────
@@ -114,34 +122,32 @@ async function inst(url: string, init?: RequestInit, tries = 5): Promise<Respons
   return null;
 }
 
-// ── Merge values ────────────────────────────────────────────────────────────
-// The campaign copy is fixed, so an empty value would render a literal
-// "{{Bullet 2}}" to a candidate. Everything is validated before a lead exists.
 function cleanValue(raw: string | undefined): string {
   return (raw || '').replace(/\s+/g, ' ').trim();
 }
 
-function validateJob(job: Partial<JobInput> | undefined): { ok: true; job: JobInput } | { ok: false; missing: string[] } {
-  const fields: { key: keyof JobInput; label: string }[] = [
-    { key: 'jobTitle', label: 'Job title' },
-    { key: 'bullet1', label: 'Bullet 1' },
-    { key: 'bullet2', label: 'Bullet 2' },
-    { key: 'bullet3', label: 'Bullet 3' },
-    { key: 'usp', label: 'Unique selling point' },
-    { key: 'specificExperience', label: 'Specific experience' },
-  ];
-  const out = {} as JobInput;
-  const missing: string[] = [];
-  for (const f of fields) {
-    const v = cleanValue(job?.[f.key]);
-    if (!v) missing.push(f.label);
-    out[f.key] = v;
+// ── Campaign readiness ──────────────────────────────────────────────────────
+// Read the live sequence and report any merge field the paste cannot fill. This
+// is deliberately computed from Instantly rather than hardcoded: as each
+// campaign is converted to the {{firstName}} + {{personalization}} template, it
+// starts accepting uploads automatically with no code change here.
+async function campaignRequirements(campaignId: string): Promise<{ ready: boolean; missing: string[]; readError?: string }> {
+  const r = await inst(`${INSTANTLY}/campaigns/${campaignId}`);
+  if (!r || !r.ok) return { ready: false, missing: [], readError: 'Could not read the campaign from Instantly' };
+  const c: any = await r.json();
+  const steps = c?.sequences?.[0]?.steps || [];
+  const found = new Set<string>();
+  for (const step of steps) {
+    for (const v of step.variants || []) {
+      const text = `${v.body || ''} ${v.subject || ''}`;
+      for (const m of text.matchAll(/\{\{([^}]+)\}\}/g)) found.add(m[1].trim());
+    }
   }
-  return missing.length ? { ok: false, missing } : { ok: true, job: out };
+  const missing = [...found].filter((v) => !SUPPLIED_VARS.has(v)).sort();
+  return { ready: missing.length === 0, missing };
 }
 
 // ── Sending-window estimate ─────────────────────────────────────────────────
-// Next Mon-Fri 09:00-17:00 in the campaign timezone, at or after `from`.
 function nextSendingWindow(from: Date): Date {
   const d = new Date(from);
   for (let i = 0; i < 14; i++) {
@@ -152,7 +158,6 @@ function nextSendingWindow(from: Date): Date {
     if (dow >= 1 && dow <= 5 && hour < WINDOW_START) {
       return new Date(d.getTime() + (WINDOW_START - hour) * 3_600_000);
     }
-    // Past the window (or a weekend): jump to the next day's window start.
     d.setTime(d.getTime() + 24 * 3_600_000);
     const next = new Date(d.toLocaleString('en-US', { timeZone: TIMEZONE }));
     d.setTime(d.getTime() - (next.getHours() - WINDOW_START) * 3_600_000 - next.getMinutes() * 60_000);
@@ -183,24 +188,17 @@ async function ensureCampaignActive(campaignId: string): Promise<boolean> {
   return !!a && a.ok;
 }
 
-async function createLead(campaignId: string, lead: LeadInput, job: JobInput): Promise<boolean> {
-  // Custom-variable keys must match the campaign copy EXACTLY, spaces included.
+async function createLead(campaignId: string, lead: LeadInput): Promise<boolean> {
   const r = await inst(`${INSTANTLY}/leads`, {
     method: 'POST',
     body: JSON.stringify({
       campaign: campaignId,
       email: lead.email,
       first_name: lead.firstName,
-      last_name: lead.lastName || '',
-      company_name: lead.company || '',
-      custom_variables: {
-        JobTitle: job.jobTitle,
-        'Bullet 1': job.bullet1,
-        'Bullet 2': job.bullet2,
-        'Bullet 3': job.bullet3,
-        'Unique Selling Point': job.usp,
-        'Specific Experience': cleanValue(lead.specificExperience) || job.specificExperience,
-      },
+      // The job title feeds both spellings so the row works against the current
+      // {{personalization}} copy and the older {{JobTitle}} copy alike.
+      personalization: lead.jobTitle,
+      custom_variables: { JobTitle: lead.jobTitle },
     }),
   });
   return !!r && r.ok;
@@ -273,10 +271,9 @@ async function listLeads(repKey: string): Promise<any[]> {
         id: l.id,
         name: `${l.first_name || ''} ${l.last_name || ''}`.trim(),
         email: l.email,
-        company: l.company_name || '',
         // Instantly accepts custom_variables on write but reads them back
         // flattened into `payload` (keys preserved verbatim, spaces and all).
-        jobTitle: l.payload?.JobTitle || '',
+        jobTitle: l.personalization || l.payload?.personalization || l.payload?.JobTitle || '',
         uploaded: l.timestamp_created || null,
         step,
         state,
@@ -374,9 +371,6 @@ async function repStatus(
 
   // Mailbox health, so a recruiter can see why nothing is going out.
   const mb = ctx.mailboxes.get(rep.email.toLowerCase()) || {};
-  const mailboxScore: number | null = mb.score ?? null;
-  const mailboxLimit: number | null = mb.limit ?? null;
-  const mailboxStatus: number | null = mb.status ?? null;
 
   return {
     rep: repKey,
@@ -391,9 +385,9 @@ async function repStatus(
     days: days.slice(0, 14),
     dailyCap: DAILY_CAP,
     campaignStatus,
-    mailboxScore,
-    mailboxLimit,
-    mailboxStatus,
+    mailboxScore: mb.score ?? null,
+    mailboxLimit: mb.limit ?? null,
+    mailboxStatus: mb.status ?? null,
   };
 }
 
@@ -420,6 +414,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ reps });
       }
 
+      if (action === 'readiness') {
+        const keys = Object.keys(REPS);
+        const rows = [];
+        for (const k of keys) {
+          const req2 = await campaignRequirements(REPS[k].campaignId);
+          rows.push({ rep: k, name: REPS[k].name, ...req2 });
+        }
+        return res.status(200).json({ reps: rows });
+      }
+
       if (action === 'list') {
         const repKey = ((req.query?.rep as string) || '').toLowerCase();
         if (!REPS[repKey]) return res.status(400).json({ error: 'rep required' });
@@ -431,13 +435,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-    const { action, rep, job, leads, id } = (req.body || {}) as {
-      action?: string;
-      rep?: string;
-      job?: Partial<JobInput>;
-      leads?: LeadInput[];
-      id?: string;
-    };
+    const { action, leads, id } = (req.body || {}) as { action?: string; leads?: LeadInput[]; id?: string };
 
     if (action === 'delete') {
       if (!id) return res.status(400).json({ error: 'id required' });
@@ -446,53 +444,80 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (action !== 'add') return res.status(400).json({ error: 'Unknown action' });
-
-    const repCfg = REPS[(rep || '').toLowerCase()];
-    if (!repCfg) return res.status(400).json({ error: `rep must be one of: ${Object.keys(REPS).join(', ')}` });
-
-    const validated = validateJob(job);
-    if (!validated.ok) {
-      return res.status(400).json({ error: `Missing job details: ${validated.missing.join(', ')}` });
-    }
     if (!Array.isArray(leads) || leads.length === 0) return res.status(400).json({ error: 'leads required' });
     if (leads.length > MAX_LEADS_PER_REQUEST) {
       return res.status(400).json({ error: `max ${MAX_LEADS_PER_REQUEST} leads per request; chunk the paste` });
     }
 
-    const activated = await ensureCampaignActive(repCfg.campaignId);
-    if (!activated) {
-      return res.status(502).json({ error: `Could not activate ${repCfg.name}'s campaign in Instantly; nothing was queued.` });
+    // Check each campaign in this batch ONCE, before creating anything. A
+    // campaign whose sequence still needs fields the paste cannot supply is
+    // refused outright rather than fed leads that would send broken emails.
+    const repsInBatch = [...new Set(leads.map((l) => (l.rep || '').toLowerCase()))];
+    const gate = new Map<string, { ready: boolean; missing: string[]; readError?: string }>();
+    for (const k of repsInBatch) {
+      if (!REPS[k]) continue;
+      gate.set(k, await campaignRequirements(REPS[k].campaignId));
     }
 
-    // Sequential: the workspace is capped at 20 Instantly requests/minute and each
-    // lead costs a dedupe check plus a create. Parallelising here trips the cap.
+    const activated = new Set<string>();
     const results: any[] = [];
+
+    // Sequential: the workspace is capped at 20 Instantly requests/minute and
+    // each lead costs a dedupe check plus a create. Parallelising trips the cap.
     for (const raw of leads) {
+      const repKey = (raw.rep || '').toLowerCase();
+      const repCfg = REPS[repKey];
       const lead: LeadInput = {
+        rep: repKey,
         firstName: cleanValue(raw.firstName),
-        lastName: cleanValue(raw.lastName),
         email: cleanValue(raw.email),
-        company: cleanValue(raw.company),
-        title: cleanValue(raw.title),
-        specificExperience: cleanValue(raw.specificExperience),
+        jobTitle: cleanValue(raw.jobTitle),
       };
+
+      if (!repCfg) {
+        results.push({ email: lead.email, rep: raw.rep, outcome: 'skipped_unknown_recruiter' });
+        continue;
+      }
+      const g = gate.get(repKey);
+      if (!g || !g.ready) {
+        results.push({
+          email: lead.email,
+          rep: repKey,
+          outcome: 'skipped_campaign_not_ready',
+          detail: g?.readError || `${repCfg.name}'s sequence still needs ${(g?.missing || []).join(', ')}`,
+        });
+        continue;
+      }
       if (!lead.email || !EMAIL_RE.test(lead.email)) {
-        results.push({ email: lead.email, outcome: 'skipped_bad_email' });
+        results.push({ email: lead.email, rep: repKey, outcome: 'skipped_bad_email' });
         continue;
       }
       if (!lead.firstName) {
-        results.push({ email: lead.email, outcome: 'skipped_no_first_name' });
+        results.push({ email: lead.email, rep: repKey, outcome: 'skipped_no_first_name' });
+        continue;
+      }
+      if (!lead.jobTitle) {
+        results.push({ email: lead.email, rep: repKey, outcome: 'skipped_no_job_title' });
         continue;
       }
       if (await existsInAccount(lead.email)) {
-        results.push({ email: lead.email, outcome: 'skipped_duplicate' });
+        results.push({ email: lead.email, rep: repKey, outcome: 'skipped_duplicate' });
         continue;
       }
-      const created = await createLead(repCfg.campaignId, lead, validated.job);
-      results.push({ email: lead.email, outcome: created ? 'added' : 'failed_create' });
+
+      if (!activated.has(repKey)) {
+        if (!(await ensureCampaignActive(repCfg.campaignId))) {
+          results.push({ email: lead.email, rep: repKey, outcome: 'failed_activate' });
+          continue;
+        }
+        activated.add(repKey);
+      }
+
+      const created = await createLead(repCfg.campaignId, lead);
+      results.push({ email: lead.email, rep: repKey, outcome: created ? 'added' : 'failed_create' });
     }
 
-    return res.status(200).json({ rep, results });
+    return res.status(200).json({ results });
   } catch (err: any) {
     console.error('Sourcing dialer error:', err?.message, err?.stack);
     return res.status(500).json({ error: err?.message || 'Internal server error' });
