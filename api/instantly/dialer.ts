@@ -67,10 +67,13 @@ const SEQUENCE_STEPS = 4;
 const MAX_LEADS_PER_REQUEST = 25;
 
 // Sending window — must match the campaign_schedule on the six campaigns
-// (Asia/Kolkata, 09:00-17:00, Mon-Fri). Used only to estimate "next email".
-const TIMEZONE = 'Asia/Kolkata';
-const WINDOW_START = 9;
-const WINDOW_END = 17;
+// (America/Chicago, 06:00-18:00, Mon-Fri). Used only to estimate "next email".
+// Central rather than the recruiters' own hours: these are US candidates, and it
+// is the candidate's inbox that decides whether the email gets read. The IANA
+// zone (not a fixed UTC offset) keeps 6am at 6am across the CST/CDT switch.
+const TIMEZONE = 'America/Chicago';
+const WINDOW_START = 6;
+const WINDOW_END = 18;
 
 const EMAIL_RE = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
