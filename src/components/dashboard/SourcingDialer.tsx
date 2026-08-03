@@ -6,9 +6,11 @@ import { Voicemail, Users, Send, Loader2, RefreshCw, X, AlertCircle, ClipboardLi
 // becomes a lead in that recruiter's ISOLATED: Instantly campaign and gets the
 // 4-email sequence the team already wrote, from the recruiter's own mailbox.
 //
-// Everything comes from the paste — nothing is selected here. Four columns:
-//   recruiter first name | candidate first name | candidate email | job title
-// One paste can cover several recruiters at once.
+// Everything comes from the paste — nothing is selected here. Columns, any order:
+//   job title | candidate first name | email 1, email 2, email 3... | rep name
+// A candidate with several addresses on file becomes one lead per address, so
+// the sequence reaches them wherever they actually read mail. One paste can
+// cover several recruiters at once.
 
 const REPS = [
   { key: 'mikee', name: 'Mikee' },
@@ -26,12 +28,15 @@ type RepKey = (typeof REPS)[number]['key'];
 // enough to finish inside the function timeout.
 const CHUNK = 10;
 
+// One pasted line = one candidate, which may carry several addresses on file.
 type Row = {
   rep: string; // resolved rep key, or '' when the recruiter was not recognised
   repRaw: string; // what the paste actually said, for the error message
   firstName: string;
-  email: string;
   jobTitle: string;
+  emails: string[]; // valid + deduped; each becomes its own lead
+  badEmails: string[]; // non-empty but malformed, surfaced so nothing vanishes quietly
+  dupeEmails: string[]; // valid but already claimed by an earlier row in this paste
   valid: boolean;
   reason?: string;
 };
@@ -91,7 +96,9 @@ function parsePaste(raw: string): Row[] {
     );
 
   let dataLines: string[];
-  let col: { rep: number; first: number; email: number; job: number };
+  // `emails` is every address column found, in column order: "Email 1", "Email 2",
+  // "Personal Email"... A candidate may have any number of them on file.
+  let col: { rep: number; first: number; job: number; emails: number[] };
 
   if (looksLikeHeader) {
     const header = firstCells;
@@ -104,7 +111,7 @@ function parsePaste(raw: string): Row[] {
     };
     // Recruiter before candidate: "recruiter first name" contains "first name"
     // too, so claim the recruiter column first and exclude it afterwards.
-    const repCol = find('recruiter', 'sender', 'sent by', 'owner', 'assigned');
+    const repCol = find('recruiter', 'rep name', 'rep', 'sender', 'sent by', 'owner', 'assigned');
     const jobCol = find('job title', 'jobtitle', 'personalization', 'role', 'position', 'title');
     let firstCol = -1;
     for (let i = 0; i < header.length; i++) {
@@ -114,15 +121,13 @@ function parsePaste(raw: string): Row[] {
         break;
       }
     }
-    let emailCol = -1;
+    // ALL email columns, not just the first: "Email 1", "Email 2", "Email 3".
+    const emailCols: number[] = [];
     for (let i = 0; i < header.length; i++) {
       if (i === repCol || i === jobCol || i === firstCol) continue;
-      if (header[i].includes('email') || header[i].includes('e-mail')) {
-        emailCol = i;
-        break;
-      }
+      if (header[i].includes('email') || header[i].includes('e-mail')) emailCols.push(i);
     }
-    col = { rep: repCol, first: firstCol, email: emailCol, job: jobCol };
+    col = { rep: repCol, first: firstCol, job: jobCol, emails: emailCols };
     dataLines = lines.slice(1);
   } else {
     // ── Headerless: detect by content ──
@@ -157,30 +162,71 @@ function parsePaste(raw: string): Row[] {
       return bi;
     };
     const taken = new Set<number>();
+    // Every email-shaped column, not just the strongest: a candidate row can
+    // carry two or three addresses and later ones are often sparsely filled,
+    // so the threshold is low and measured only over non-empty cells.
+    const emailCols: number[] = [];
+    for (let i = 0; i < nCols; i++) {
+      if (emailF[i] > 0.5) {
+        emailCols.push(i);
+        taken.add(i);
+      }
+    }
     const repCol = best(repF, 0.5, taken);
-    const emailCol = best(emailF, 0.5, taken);
     const firstCol = best(nameF, 0.5, taken);
     const jobCol = best(jobF, 0.4, taken);
-    col = { rep: repCol, first: firstCol, email: emailCol, job: jobCol };
-    if (col.email === -1) return [];
+    col = { rep: repCol, first: firstCol, job: jobCol, emails: emailCols };
+    if (!emailCols.length) return [];
   }
 
   const rows: Row[] = [];
+  // Addresses already claimed earlier in this paste. The same person often
+  // appears on two recruiters' lists; whoever is listed first keeps them, so a
+  // candidate is never emailed twice from two different mailboxes.
+  const seenEmails = new Set<string>();
+
   for (const line of dataLines) {
     const cells = parseLine(line);
     const get = (i: number) => (i >= 0 && i < cells.length ? cells[i].trim() : '');
     const repRaw = get(col.rep);
+
+    const emails: string[] = [];
+    const badEmails: string[] = [];
+    const dupeEmails: string[] = [];
+    for (const i of col.emails) {
+      const raw = get(i);
+      if (!raw) continue; // blank cell: this candidate simply has fewer on file
+      if (!EMAIL_RE.test(raw)) {
+        badEmails.push(raw);
+        continue;
+      }
+      const key = raw.toLowerCase();
+      if (seenEmails.has(key)) {
+        dupeEmails.push(raw);
+        continue;
+      }
+      seenEmails.add(key);
+      emails.push(raw);
+    }
+
     const row: Row = {
       rep: resolveRep(repRaw),
       repRaw,
       firstName: get(col.first),
-      email: get(col.email),
       jobTitle: get(col.job),
+      emails,
+      badEmails,
+      dupeEmails,
       valid: true,
     };
-    if (!row.email || !EMAIL_RE.test(row.email)) {
+
+    if (!emails.length) {
       row.valid = false;
-      row.reason = 'no valid email';
+      // Say which it was: missing data and already-claimed data are very
+      // different problems for whoever is fixing the sheet.
+      if (dupeEmails.length) row.reason = 'address already used by an earlier row';
+      else if (badEmails.length) row.reason = 'no valid email';
+      else row.reason = 'no email on file';
     } else if (!row.firstName) {
       row.valid = false;
       row.reason = 'missing first name';
@@ -298,30 +344,34 @@ export function SourcingDialer({ token }: { token: string }) {
   // Rows whose recruiter's sequence still needs fields a paste cannot fill.
   const blocked = validRows.filter((r) => readiness[r.rep] && !readiness[r.rep].ready);
   const sendable = validRows.filter((r) => !readiness[r.rep] || readiness[r.rep].ready);
-  const byRep = sendable.reduce((m: Record<string, number>, r) => {
-    m[r.rep] = (m[r.rep] || 0) + 1;
-    return m;
-  }, {});
   const blockedReps = [...new Set(blocked.map((r) => r.rep))];
 
+  // A candidate with three addresses on file becomes three leads. Everything the
+  // recruiter is shown counts leads, because that is what actually gets sent.
+  const leads = sendable.flatMap((r) =>
+    r.emails.map((email) => ({ rep: r.rep, firstName: r.firstName, email, jobTitle: r.jobTitle }))
+  );
+  const byRep = leads.reduce((m: Record<string, number>, l) => {
+    m[l.rep] = (m[l.rep] || 0) + 1;
+    return m;
+  }, {});
+  const extraAddresses = leads.length - sendable.length;
+
   const submit = async () => {
-    if (!sendable.length || running) return;
+    if (!leads.length || running) return;
     setRunning(true);
     setResults([]);
     setSubmitError('');
-    setProgress({ done: 0, total: sendable.length });
+    setProgress({ done: 0, total: leads.length });
 
     const all: any[] = [];
-    for (let i = 0; i < sendable.length; i += CHUNK) {
-      const chunk = sendable.slice(i, i + CHUNK);
+    for (let i = 0; i < leads.length; i += CHUNK) {
+      const chunk = leads.slice(i, i + CHUNK);
       try {
         const res = await fetch('/api/instantly/dialer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({
-            action: 'add',
-            leads: chunk.map((c) => ({ rep: c.rep, firstName: c.firstName, email: c.email, jobTitle: c.jobTitle })),
-          }),
+          body: JSON.stringify({ action: 'add', leads: chunk }),
         });
         const d = await res.json();
         if (!res.ok) {
@@ -332,7 +382,7 @@ export function SourcingDialer({ token }: { token: string }) {
       } catch {
         all.push(...chunk.map((c) => ({ email: c.email, rep: c.rep, outcome: 'failed_request' })));
       }
-      setProgress({ done: Math.min(i + CHUNK, sendable.length), total: sendable.length });
+      setProgress({ done: Math.min(i + CHUNK, leads.length), total: leads.length });
       setResults([...all]);
     }
     setRunning(false);
@@ -437,8 +487,9 @@ export function SourcingDialer({ token }: { token: string }) {
             Paste your candidates
           </p>
           <p className="text-[11px] text-white/30 mt-1">
-            Four columns, any order: recruiter first name, candidate first name, candidate email, job title. The job title becomes the
-            personalization in Instantly. Nothing to select, one paste can cover several recruiters.
+            Any order: job title, candidate first name, one or more email columns, rep name. The job title becomes the personalization in
+            Instantly. A candidate with several addresses on file gets the sequence at each one. Nothing to select, and one paste can cover
+            several recruiters.
           </p>
         </div>
 
@@ -446,7 +497,7 @@ export function SourcingDialer({ token }: { token: string }) {
           value={paste}
           onChange={(e) => handlePaste(e.target.value)}
           placeholder={
-            'Recruiter,First Name,Email,Job Title\nRemishka,Marcus,marcus.holloway@gulfcoastfleet.com,Regional Fleet Maintenance Manager\nRemishka,Priya,priya.raman@meridiantransport.com,Diesel Shop Supervisor'
+            'Job Title,First Name,Email 1,Email 2,Email 3,Rep Name\nRegional Fleet Maintenance Manager,Marcus,marcus.holloway@gulfcoastfleet.com,mholloway@gmail.com,,Remishka\nDiesel Shop Supervisor,Priya,priya.raman@meridiantransport.com,,,Remishka'
           }
           rows={7}
           className="w-full bg-black/30 border border-white/[0.08] rounded-lg p-3 text-xs text-white/80 font-mono focus:outline-none focus:border-[#D4A853]/40 placeholder:text-white/20"
@@ -470,6 +521,7 @@ export function SourcingDialer({ token }: { token: string }) {
                   <tr>
                     <th className="text-left px-2 py-1.5 font-medium">Recruiter</th>
                     <th className="text-left px-2 py-1.5 font-medium">Candidate</th>
+                    <th className="text-left px-2 py-1.5 font-medium">Addresses on file</th>
                     <th className="text-left px-2 py-1.5 font-medium">Job title (personalization)</th>
                     <th className="text-left px-2 py-1.5 font-medium">Status</th>
                   </tr>
@@ -478,11 +530,31 @@ export function SourcingDialer({ token }: { token: string }) {
                   {rows.map((r, i) => {
                     const notReady = r.valid && readiness[r.rep] && !readiness[r.rep].ready;
                     return (
-                      <tr key={i} className="border-t border-white/[0.04]">
+                      <tr key={i} className="border-t border-white/[0.04] align-top">
                         <td className="px-2 py-1.5 text-white/70">{r.rep ? repName(r.rep) : r.repRaw || '–'}</td>
+                        <td className="px-2 py-1.5 text-white/75">{r.firstName || <span className="text-white/25">(no name)</span>}</td>
                         <td className="px-2 py-1.5">
-                          <div className="text-white/75">{r.firstName}</div>
-                          <div className="text-white/35">{r.email || '(no email)'}</div>
+                          {r.emails.length === 0 && r.badEmails.length === 0 && r.dupeEmails.length === 0 && (
+                            <span className="text-white/25">none</span>
+                          )}
+                          {r.emails.map((e) => (
+                            <div key={e} className="text-white/50">
+                              {e}
+                            </div>
+                          ))}
+                          {r.badEmails.map((e) => (
+                            <div key={e} className="text-red-400/50 line-through">
+                              {e}
+                            </div>
+                          ))}
+                          {r.dupeEmails.map((e) => (
+                            <div key={e} className="text-white/25 line-through">
+                              {e}
+                            </div>
+                          ))}
+                          {r.valid && r.emails.length > 1 && (
+                            <div className="text-[#D4A853]/70 mt-0.5">{r.emails.length} leads</div>
+                          )}
                         </td>
                         <td className="px-2 py-1.5 text-white/55">{r.jobTitle}</td>
                         <td className="px-2 py-1.5">
@@ -514,7 +586,14 @@ export function SourcingDialer({ token }: { token: string }) {
 
             <div className="flex items-center justify-between flex-wrap gap-3">
               <p className="text-xs text-white/40">
-                {sendable.length} of {rows.length} rows ready
+                {sendable.length} of {rows.length} candidates ready
+                {extraAddresses > 0 && (
+                  <span className="text-[#D4A853]/70">
+                    {' '}
+                    · {leads.length} leads, since {extraAddresses} extra address{extraAddresses === 1 ? ' gets its' : 'es get their'} own
+                    sequence
+                  </span>
+                )}
                 {Object.keys(byRep).length > 0 && (
                   <>
                     {' '}
@@ -528,7 +607,7 @@ export function SourcingDialer({ token }: { token: string }) {
               </p>
               <button
                 onClick={submit}
-                disabled={!sendable.length || running}
+                disabled={!leads.length || running}
                 className="flex items-center gap-2 bg-gradient-to-r from-[#D4A853] to-[#b8912e] text-black text-sm font-semibold rounded-lg px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed transition-all hover:shadow-lg hover:shadow-[#D4A853]/20"
               >
                 {running ? (
@@ -539,7 +618,7 @@ export function SourcingDialer({ token }: { token: string }) {
                 ) : (
                   <>
                     <Send className="h-4 w-4" />
-                    Queue {sendable.length} candidate{sendable.length === 1 ? '' : 's'}
+                    Queue {leads.length} lead{leads.length === 1 ? '' : 's'}
                   </>
                 )}
               </button>

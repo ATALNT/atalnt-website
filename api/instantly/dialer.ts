@@ -461,6 +461,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const activated = new Set<string>();
     const results: any[] = [];
+    // A candidate with several addresses on file becomes one lead per address,
+    // so the same address can legitimately appear twice in one paste. Track what
+    // this request already created: existsInAccount would not see a lead made a
+    // moment ago within the same batch.
+    const createdThisRequest = new Set<string>();
 
     // Sequential: the workspace is capped at 20 Instantly requests/minute and
     // each lead costs a dedupe check plus a create. Parallelising trips the cap.
@@ -500,7 +505,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         results.push({ email: lead.email, rep: repKey, outcome: 'skipped_no_job_title' });
         continue;
       }
-      if (await existsInAccount(lead.email)) {
+      const emailKey = lead.email.toLowerCase();
+      if (createdThisRequest.has(emailKey) || (await existsInAccount(lead.email))) {
         results.push({ email: lead.email, rep: repKey, outcome: 'skipped_duplicate' });
         continue;
       }
@@ -514,6 +520,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const created = await createLead(repCfg.campaignId, lead);
+      if (created) createdThisRequest.add(emailKey);
       results.push({ email: lead.email, rep: repKey, outcome: created ? 'added' : 'failed_create' });
     }
 
