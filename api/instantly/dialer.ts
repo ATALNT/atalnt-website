@@ -66,6 +66,11 @@ const DAILY_CAP = 30;
 const SEQUENCE_STEPS = 4;
 const MAX_LEADS_PER_REQUEST = 25;
 
+// Gap between lead creates. Instantly caps the workspace at 20 requests/minute
+// and the health guard draws on the same budget, so ~10/min for uploads leaves
+// headroom. A 10-lead chunk takes about a minute and cannot trip the limit.
+const CREATE_SPACING_MS = 6_000;
+
 // Sending window — must match the campaign_schedule on the six campaigns
 // (America/Chicago, 06:00-18:00, Mon-Fri). Used only to estimate "next email".
 // Central rather than the recruiters' own hours: these are US candidates, and it
@@ -114,7 +119,11 @@ async function inst(url: string, init?: RequestInit, tries = 5): Promise<Respons
     try {
       const r = await fetch(url, { headers: instHeaders(), ...init });
       if ((r.status === 429 || r.status >= 500) && i < tries - 1) {
-        await new Promise((s) => setTimeout(s, 1500 * (i + 1)));
+        // 429 needs to outwait the whole rate window, not just a moment: the
+        // cap is per minute, so back off 5s/10s/15s/20s (50s total) rather than
+        // the 15s that used to give up while the limit was still in force.
+        const base = r.status === 429 ? 5_000 : 1_500;
+        await new Promise((s) => setTimeout(s, base * (i + 1)));
         continue;
       }
       return r;
@@ -169,15 +178,15 @@ function nextSendingWindow(from: Date): Date {
 }
 
 // ── Instantly operations ────────────────────────────────────────────────────
-async function existsInAccount(email: string): Promise<boolean> {
-  const r = await inst(`${INSTANTLY}/leads/list`, {
-    method: 'POST',
-    body: JSON.stringify({ search: email, limit: 10 }),
-  });
-  if (!r || !r.ok) return false; // fail open: the check is best effort
-  const d: any = await r.json();
-  return (d.items || []).some((l: any) => (l.email || '').toLowerCase() === email.toLowerCase());
-}
+// Dedupe is done by Instantly via skip_if_in_workspace, NOT by a pre-check here.
+// Measured 2026-08-05 against a draft campaign:
+//   - a plain POST of an existing address DOES create a second copy, so some
+//     form of dedupe is genuinely required
+//   - skip_if_in_workspace:true returns HTTP 200 with the EXISTING lead record
+//     (its original id, timestamp_created and campaign) and creates nothing
+// That makes the old per-lead /leads/list pre-check pure redundancy: it doubled
+// the request cost against a 20/min workspace cap, which is what was making bulk
+// uploads fail. One request per lead now, with account-wide protection intact.
 
 async function ensureCampaignActive(campaignId: string): Promise<boolean> {
   // The six campaigns ship as drafts (status 0), and a campaign that runs out of
@@ -191,7 +200,12 @@ async function ensureCampaignActive(campaignId: string): Promise<boolean> {
   return !!a && a.ok;
 }
 
-async function createLead(campaignId: string, lead: LeadInput): Promise<boolean> {
+type CreateResult =
+  | { outcome: 'added' }
+  | { outcome: 'skipped_duplicate'; detail: string }
+  | { outcome: 'failed_create'; detail: string };
+
+async function createLead(campaignId: string, lead: LeadInput): Promise<CreateResult> {
   const r = await inst(`${INSTANTLY}/leads`, {
     method: 'POST',
     body: JSON.stringify({
@@ -202,9 +216,56 @@ async function createLead(campaignId: string, lead: LeadInput): Promise<boolean>
       // {{personalization}} copy and the older {{JobTitle}} copy alike.
       personalization: lead.jobTitle,
       custom_variables: { JobTitle: lead.jobTitle },
+      // Instantly refuses to duplicate an address that already exists anywhere in
+      // the workspace, cold campaigns included, and hands back the existing lead.
+      skip_if_in_workspace: true,
     }),
   });
-  return !!r && r.ok;
+
+  if (!r) {
+    const detail = 'No response from Instantly after retries (network or sustained rate limit)';
+    console.error('createLead:', lead.email, detail);
+    return { outcome: 'failed_create', detail };
+  }
+
+  const raw = await r.text();
+  if (!r.ok) {
+    // Surface what Instantly actually said. Previously this returned a bare
+    // false, so the UI could only ever say "failed" with no reason and nothing
+    // was recoverable from the logs either.
+    let detail = `Instantly returned ${r.status}`;
+    try {
+      const j = JSON.parse(raw);
+      const msg = j?.message || j?.error || j?.detail;
+      if (msg) detail += `: ${typeof msg === 'string' ? msg : JSON.stringify(msg)}`;
+    } catch {
+      if (raw) detail += `: ${raw.slice(0, 200)}`;
+    }
+    if (r.status === 429) detail += ' (workspace rate limit, try a smaller paste)';
+    console.error('createLead:', lead.email, detail);
+    return { outcome: 'failed_create', detail };
+  }
+
+  // A skip comes back as HTTP 200 carrying the PRE-EXISTING lead, so "did this
+  // create anything?" is answered by whether the returned record is the one we
+  // just asked for: a different campaign, or a creation timestamp that predates
+  // this request, means Instantly deduped rather than inserted.
+  try {
+    const lead2: any = JSON.parse(raw);
+    const createdAt = Date.parse(lead2?.timestamp_created || '');
+    const preexisting =
+      (lead2?.campaign && lead2.campaign !== campaignId) ||
+      (Number.isFinite(createdAt) && Date.now() - createdAt > 60_000);
+    if (preexisting) {
+      return {
+        outcome: 'skipped_duplicate',
+        detail: `${lead.email} is already in Instantly${lead2.campaign && lead2.campaign !== campaignId ? ' under another campaign' : ''}`,
+      };
+    }
+  } catch {
+    /* unparseable 200: treat as created, the lead list is the source of truth */
+  }
+  return { outcome: 'added' };
 }
 
 async function deleteLead(id: string): Promise<boolean> {
@@ -470,8 +531,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // moment ago within the same batch.
     const createdThisRequest = new Set<string>();
 
-    // Sequential: the workspace is capped at 20 Instantly requests/minute and
-    // each lead costs a dedupe check plus a create. Parallelising trips the cap.
+    // Sequential: the workspace is capped at 20 Instantly requests/minute and the
+    // health guard spends from the same budget. One create per lead now, paced
+    // below, so a big paste degrades into "slower" rather than "failed".
+    let createsIssued = 0;
     for (const raw of leads) {
       const repKey = (raw.rep || '').toLowerCase();
       const repCfg = REPS[repKey];
@@ -508,8 +571,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         results.push({ email: lead.email, rep: repKey, outcome: 'skipped_no_job_title' });
         continue;
       }
+      // Within-request guard only. Cross-request and cross-campaign dedupe is
+      // Instantly's job now (skip_if_in_workspace), which costs no extra call.
       const emailKey = lead.email.toLowerCase();
-      if (createdThisRequest.has(emailKey) || (await existsInAccount(lead.email))) {
+      if (createdThisRequest.has(emailKey)) {
         results.push({ email: lead.email, rep: repKey, outcome: 'skipped_duplicate' });
         continue;
       }
@@ -522,9 +587,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         activated.add(repKey);
       }
 
+      // Pace the creates. The guard shares the 20/min budget, so going flat out
+      // is what produced the unexplained failures; a short gap keeps a full paste
+      // comfortably inside the cap.
+      if (createsIssued > 0) await new Promise((s) => setTimeout(s, CREATE_SPACING_MS));
+      createsIssued++;
+
       const created = await createLead(repCfg.campaignId, lead);
-      if (created) createdThisRequest.add(emailKey);
-      results.push({ email: lead.email, rep: repKey, outcome: created ? 'added' : 'failed_create' });
+      if (created.outcome === 'added') createdThisRequest.add(emailKey);
+      results.push({ email: lead.email, rep: repKey, ...created });
     }
 
     return res.status(200).json({ results });

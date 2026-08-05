@@ -34,7 +34,10 @@ const H = { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json', 
 const STAY_SCORE = 97;
 const ADD_SCORE = 98;
 const DAILY_LIMIT = 20;
-const AUDIT_WINDOW_MIN = Number(process.env.AUDIT_WINDOW_MIN || 15);
+// Must cover the whole gap between passes, or the audit inspects a sliver of it
+// and reports ALL CLEAR for time it never looked at. Enforcement is 4-hourly
+// (workflow cron), so the default matches at 240 minutes.
+const AUDIT_WINDOW_MIN = Number(process.env.AUDIT_WINDOW_MIN || 240);
 
 // PROTECTED WARMUP-ONLY MAILBOXES (operator directive 2026-07-16): these team
 // mailboxes use Instantly for warmup ONLY. They must NEVER be added to any
@@ -334,11 +337,17 @@ async function runOnce(iterIndex = 0) {
 }
 
 // ---- driver: single pass by default; continuous loop when GUARD_LOOP_MINUTES set.
-// GitHub throttles cron to 1.5-3.5h gaps, so each workflow run IS the cadence:
-// it re-enforces every 10 minutes for ~GUARD_LOOP_MINUTES and runs chain via the
-// concurrency group, giving continuous coverage regardless of the scheduler.
+// 2026-08-05: enforcement spacing moved from 10 minutes to 4 HOURS. It churned
+// constantly at 10: 142 of 730 mailboxes sit in the 95-98 band and 77 sit exactly
+// on the 97 stay-threshold, so ordinary warmup drift kept knocking them off
+// rosters and firing a pause/activate queue flush on every affected campaign.
+//
+// The interval lives here rather than in the workflow so it applies however the
+// guard is invoked. For an exact 4-hourly cadence the workflow should also move
+// to `cron: 0 */4 * * *` with GUARD_LOOP_MINUTES=0; while it still sets a loop
+// length, spacing is right but run boundaries add some jitter.
 const LOOP_MIN = Number(process.env.GUARD_LOOP_MINUTES || 0);
-const INTERVAL_MS = 10 * 60_000;
+const INTERVAL_MS = Number(process.env.GUARD_INTERVAL_MINUTES || 240) * 60_000;
 const deadline = Date.now() + LOOP_MIN * 60_000;
 const allProblems = [];
 for (let iter = 1; ; iter++) {

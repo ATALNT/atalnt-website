@@ -95,10 +95,13 @@ function parsePaste(raw: string): Row[] {
       ['recruiter', 'first name', 'firstname', 'email', 'job title', 'jobtitle', 'title', 'personalization'].some((f) => h.includes(f))
     );
 
+  // Column positions are only ever a HINT, taken from an explicit header row.
+  // Every value is ultimately confirmed by what the cell contains, because real
+  // spreadsheet copies arrive with ragged delimiters: one row carrying an extra
+  // tab used to shift that row's columns and, since positions were chosen once
+  // for the whole paste, corrupt every other row with it.
   let dataLines: string[];
-  // `emails` is every address column found, in column order: "Email 1", "Email 2",
-  // "Personal Email"... A candidate may have any number of them on file.
-  let col: { rep: number; first: number; job: number; emails: number[] };
+  let col = { rep: -1, first: -1, job: -1 };
 
   if (looksLikeHeader) {
     const header = firstCells;
@@ -121,63 +124,52 @@ function parsePaste(raw: string): Row[] {
         break;
       }
     }
-    // ALL email columns, not just the first: "Email 1", "Email 2", "Email 3".
-    const emailCols: number[] = [];
-    for (let i = 0; i < header.length; i++) {
-      if (i === repCol || i === jobCol || i === firstCol) continue;
-      if (header[i].includes('email') || header[i].includes('e-mail')) emailCols.push(i);
-    }
-    col = { rep: repCol, first: firstCol, job: jobCol, emails: emailCols };
+    col = { rep: repCol, first: firstCol, job: jobCol };
     dataLines = lines.slice(1);
   } else {
-    // ── Headerless: detect by content ──
     dataLines = lines;
-    const sample = dataLines.slice(0, 30).map(parseLine);
-    const nCols = Math.max(...sample.map((r) => r.length));
-    const frac = (fn: (c: string) => boolean) =>
-      Array.from({ length: nCols }, (_, i) => {
-        const filled = sample.map((r) => (r[i] || '').trim()).filter(Boolean);
-        if (!filled.length) return 0;
-        return filled.filter(fn).length / filled.length;
-      });
-
-    const emailF = frac((c) => EMAIL_RE.test(c));
-    const repF = frac((c) => !!resolveRep(c));
-    // A job title is texty, multi-word, and repeats across rows far more than a
-    // person's name does.
-    const jobF = frac((c) => !EMAIL_RE.test(c) && !resolveRep(c) && /\s/.test(c) && c.length > 5);
-    const nameF = frac((c) => !EMAIL_RE.test(c) && !resolveRep(c) && /^[A-Za-z][A-Za-z'-]{1,20}$/.test(c));
-
-    const best = (scores: number[], min: number, taken: Set<number>) => {
-      let bi = -1;
-      let bv = min;
-      for (let i = 0; i < nCols; i++) {
-        if (taken.has(i)) continue;
-        if (scores[i] > bv) {
-          bi = i;
-          bv = scores[i];
-        }
-      }
-      if (bi !== -1) taken.add(bi);
-      return bi;
-    };
-    const taken = new Set<number>();
-    // Every email-shaped column, not just the strongest: a candidate row can
-    // carry two or three addresses and later ones are often sparsely filled,
-    // so the threshold is low and measured only over non-empty cells.
-    const emailCols: number[] = [];
-    for (let i = 0; i < nCols; i++) {
-      if (emailF[i] > 0.5) {
-        emailCols.push(i);
-        taken.add(i);
-      }
-    }
-    const repCol = best(repF, 0.5, taken);
-    const firstCol = best(nameF, 0.5, taken);
-    const jobCol = best(jobF, 0.4, taken);
-    col = { rep: repCol, first: firstCol, job: jobCol, emails: emailCols };
-    if (!emailCols.length) return [];
   }
+
+  // Job titles repeat down a list; candidate names do not. Used only to break a
+  // tie when a row's two leftover cells are both single words, e.g. the title
+  // "Dispatcher" sitting next to the name "Marcus".
+  const leftoverCounts = new Map<string, number>();
+  for (const line of dataLines) {
+    for (const raw of parseLine(line)) {
+      const c = raw.trim();
+      if (!c || c.includes('@') || resolveRep(c)) continue;
+      leftoverCounts.set(c.toLowerCase(), (leftoverCounts.get(c.toLowerCase()) || 0) + 1);
+    }
+  }
+  const repeats = (v: string) => leftoverCounts.get(v.toLowerCase()) || 0;
+
+  // Classify one row purely by cell content. Addresses and the six recruiter
+  // names are unmistakable, so whatever is left is at most a name and a title.
+  const classify = (cells: string[]) => {
+    const nonEmpty = cells.map((c) => c.trim()).filter(Boolean);
+    const emails = nonEmpty.filter((c) => EMAIL_RE.test(c));
+    // A cell with an @ that fails the pattern is a broken address, not a name.
+    // Deliberately only the @ test: anything looser misreads hyphenated names
+    // like "Mary-Jane" as a malformed address.
+    const badEmails = nonEmpty.filter((c) => !EMAIL_RE.test(c) && c.includes('@'));
+    const repRaw = nonEmpty.find((c) => !c.includes('@') && resolveRep(c)) || '';
+    const rest = nonEmpty.filter((c) => !c.includes('@') && c !== repRaw);
+
+    let jobTitle = '';
+    let firstName = '';
+    if (rest.length === 1) {
+      if (/\s/.test(rest[0])) jobTitle = rest[0];
+      else firstName = rest[0];
+    } else if (rest.length >= 2) {
+      const ranked = [...rest].sort(
+        (a, b) =>
+          b.split(/\s+/).length - a.split(/\s+/).length || repeats(b) - repeats(a) || b.length - a.length
+      );
+      jobTitle = ranked[0];
+      firstName = rest.find((c) => c !== jobTitle) || '';
+    }
+    return { emails, badEmails, repRaw, jobTitle, firstName };
+  };
 
   const rows: Row[] = [];
   // Addresses already claimed earlier in this paste. The same person often
@@ -188,32 +180,42 @@ function parsePaste(raw: string): Row[] {
   for (const line of dataLines) {
     const cells = parseLine(line);
     const get = (i: number) => (i >= 0 && i < cells.length ? cells[i].trim() : '');
-    const repRaw = get(col.rep);
+    const guess = classify(cells);
 
+    // Trust a header position only when the cell it points at actually holds
+    // that kind of value. On a ragged row the header points at the wrong cell,
+    // so fall through to what the content says instead of importing the shift.
+    // Keep an unrecognised header value as a last resort so the row can say
+    // unknown recruiter "Bob" rather than the far less useful "missing recruiter".
+    const headerRep = get(col.rep);
+    const repRaw = resolveRep(headerRep) ? headerRep : guess.repRaw || headerRep;
+
+    const headerFirst = get(col.first);
+    const firstName = headerFirst && !headerFirst.includes('@') && !resolveRep(headerFirst) ? headerFirst : guess.firstName;
+
+    const headerJob = get(col.job);
+    const jobTitle = headerJob && !headerJob.includes('@') && !resolveRep(headerJob) ? headerJob : guess.jobTitle;
+
+    // Addresses are always taken from content: EMAIL_RE is definitive, so a
+    // column index could only ever lose one.
     const emails: string[] = [];
-    const badEmails: string[] = [];
     const dupeEmails: string[] = [];
-    for (const i of col.emails) {
-      const raw = get(i);
-      if (!raw) continue; // blank cell: this candidate simply has fewer on file
-      if (!EMAIL_RE.test(raw)) {
-        badEmails.push(raw);
-        continue;
-      }
-      const key = raw.toLowerCase();
+    for (const addr of guess.emails) {
+      const key = addr.toLowerCase();
       if (seenEmails.has(key)) {
-        dupeEmails.push(raw);
+        dupeEmails.push(addr);
         continue;
       }
       seenEmails.add(key);
-      emails.push(raw);
+      emails.push(addr);
     }
+    const badEmails = guess.badEmails;
 
     const row: Row = {
       rep: resolveRep(repRaw),
       repRaw,
-      firstName: get(col.first),
-      jobTitle: get(col.job),
+      firstName,
+      jobTitle,
       emails,
       badEmails,
       dupeEmails,
@@ -239,6 +241,11 @@ function parsePaste(raw: string): Row[] {
     }
     rows.push(row);
   }
+
+  // Nothing address-shaped anywhere: this is not a candidate list. Return empty
+  // so the UI shows the "no email column found" hint rather than a table of
+  // rows all failing for the same reason.
+  if (!rows.some((r) => r.emails.length || r.badEmails.length || r.dupeEmails.length)) return [];
   return rows;
 }
 
