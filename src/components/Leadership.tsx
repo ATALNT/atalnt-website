@@ -5,16 +5,16 @@ import lavanyaThatikondaImg from '@/assets/lavanya-thatikonda.jpeg';
 const leaders = [
   {
     name: 'Lavanya Thatikonda',
-    role: 'Principal Partner',
-    bio: 'Principal Partner and serial entrepreneur with 16+ years scaling organizations and driving workforce growth. Lavanya has grown companies from 50 to 400+ employees, combining technology leadership with recruitment expertise at ATALNT.',
+    role: 'Co-founder & CEO',
+    bio: 'Co-founder & CEO and serial entrepreneur with 16+ years scaling organizations and driving workforce growth. Lavanya has grown companies from 50 to 400+ employees, combining technology leadership with recruitment expertise at ATALNT.',
     image: lavanyaThatikondaImg,
     objectPosition: 'object-[center_15%] scale-[1.15] origin-top',
     linkedin: 'https://www.linkedin.com/in/lavanyapoosarla/',
   },
   {
     name: 'Nik Jain',
-    role: 'Executive Partner',
-    bio: 'Executive Partner with a diverse background in recruiting, logistics, and technology. Nik founded JP Recruiting Agency and now leads the AI practice at ATALNT, combining entrepreneurial vision with a servant-leadership approach to drive growth.',
+    role: 'Co-founder & COO',
+    bio: 'Co-founder & COO with a diverse background in recruiting, logistics, and technology. Nik founded JP Recruiting Agency and now leads the AI practice at ATALNT, combining entrepreneurial vision with a servant-leadership approach to drive growth.',
     image: nikJainImg,
     objectPosition: 'object-center',
     linkedin: 'https://www.linkedin.com/in/jainnik/',
