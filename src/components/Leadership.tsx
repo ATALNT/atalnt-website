@@ -16,7 +16,7 @@ const leaders = [
     role: 'Executive Partner',
     bio: 'Executive Partner with a diverse background in recruiting, logistics, and technology. Nik founded JP Recruiting Agency and now leads the AI practice at ATALNT, combining entrepreneurial vision with a servant-leadership approach to drive growth.',
     image: nikJainImg,
-    objectPosition: 'object-[center_20%]',
+    objectPosition: 'object-center',
     linkedin: 'https://www.linkedin.com/in/jainnik/',
   },
 ];
