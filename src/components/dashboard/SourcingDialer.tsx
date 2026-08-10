@@ -43,6 +43,22 @@ type Row = {
 
 const EMAIL_RE = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 
+// Every outcome the API can return, in the order worth reading. Listed here so
+// the results panel reports all of them rather than a bare "n failed".
+const OUTCOMES: { key: string; label: string; tone: string }[] = [
+  { key: 'added', label: 'Queued', tone: 'text-emerald-400/90' },
+  { key: 'skipped_duplicate', label: 'Already in Instantly', tone: 'text-white/45' },
+  { key: 'skipped_unverified', label: 'Failed address check', tone: 'text-amber-400/80' },
+  { key: 'skipped_campaign_not_ready', label: 'Sequence not ready', tone: 'text-amber-400/80' },
+  { key: 'skipped_bad_email', label: 'Malformed email', tone: 'text-white/45' },
+  { key: 'skipped_no_first_name', label: 'No first name', tone: 'text-white/45' },
+  { key: 'skipped_no_job_title', label: 'No job title', tone: 'text-white/45' },
+  { key: 'skipped_unknown_recruiter', label: 'Unknown recruiter', tone: 'text-white/45' },
+  { key: 'failed_create', label: 'Rejected by Instantly', tone: 'text-red-400/70' },
+  { key: 'failed_activate', label: 'Campaign would not activate', tone: 'text-red-400/70' },
+  { key: 'failed_request', label: 'Request failed', tone: 'text-red-400/70' },
+];
+
 // Resolve whatever the recruiter column says to a rep key: "Mikee", "mikee",
 // "Mikee Gagarin", "mikee@atalntrecruiting.com" all land on the same person.
 function resolveRep(raw: string): string {
@@ -264,6 +280,9 @@ export function SourcingDialer({ token }: { token: string }) {
   const [readiness, setReadiness] = useState<Record<string, { ready: boolean; missing: string[] }>>({});
 
   const [queueRep, setQueueRep] = useState<RepKey>('remishka');
+  // Default to people still due an email. Finished, replied and bounced rows are
+  // the bulk of the list and are not something anyone needs to act on.
+  const [pendingOnly, setPendingOnly] = useState(true);
   const [queue, setQueue] = useState<any[]>([]);
   const [queueLoading, setQueueLoading] = useState(false);
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
@@ -294,10 +313,28 @@ export function SourcingDialer({ token }: { token: string }) {
     }
   }, [token]);
 
+  // Clear long-finished leads out of Instantly once when the tab opens, then
+  // load. Totals are read from the email log so they survive the purge.
   useEffect(() => {
-    loadStatus();
-    loadReadiness();
-  }, [loadStatus, loadReadiness]);
+    let cancelled = false;
+    (async () => {
+      try {
+        await fetch('/api/instantly/dialer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ action: 'purge' }),
+        });
+      } catch {
+        /* housekeeping only; never block the dashboard on it */
+      }
+      if (cancelled) return;
+      loadStatus();
+      loadReadiness();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, loadStatus, loadReadiness]);
 
   const loadQueue = useCallback(
     async (r: RepKey) => {
@@ -401,6 +438,12 @@ export function SourcingDialer({ token }: { token: string }) {
     m[r.outcome] = (m[r.outcome] || 0) + 1;
     return m;
   }, {});
+  // What the verifier said, across everything submitted.
+  const verifyCounts: Record<string, number> = {};
+  for (const r of results) {
+    if (r.verifyStatus) verifyCounts[r.verifyStatus] = (verifyCounts[r.verifyStatus] || 0) + 1;
+  }
+  const failedRows = results.filter((r) => r.outcome !== 'added');
 
   const fmtDate = (iso: string | null) => {
     if (!iso) return '–';
@@ -427,6 +470,8 @@ export function SourcingDialer({ token }: { token: string }) {
     bounced: 'text-red-400/70',
   };
   const repName = (k: string) => REPS.find((r) => r.key === k)?.name || k;
+  // Pending = still due an email. Everything else is history.
+  const visibleQueue = pendingOnly ? queue.filter((l) => l.state === 'queued' || l.state === 'in_sequence') : queue;
 
   return (
     <div className="space-y-6">
@@ -443,10 +488,13 @@ export function SourcingDialer({ token }: { token: string }) {
                 </p>
                 <span className="text-[10px] text-white/25 truncate">{s.email || ''}</span>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              {/* "Pending" is people still due to receive something. It used to
+                  print Instantly's raw lead count, which included bounced and
+                  finished rows and read far higher than reality. */}
+              <div className="mt-3 grid grid-cols-4 gap-2 text-center">
                 <div>
                   <p className="text-lg font-bold text-white">{statusLoading ? '–' : s.queued ?? '–'}</p>
-                  <p className="text-[10px] uppercase tracking-wider text-white/30">in queue</p>
+                  <p className="text-[10px] uppercase tracking-wider text-white/30">pending</p>
                 </div>
                 <div>
                   <p className="text-lg font-bold text-white">
@@ -456,14 +504,30 @@ export function SourcingDialer({ token }: { token: string }) {
                   <p className="text-[10px] uppercase tracking-wider text-white/30">sent today</p>
                 </div>
                 <div>
-                  <p className="text-lg font-bold text-white">{statusLoading ? '–' : s.replies ?? '–'}</p>
+                  <p className="text-lg font-bold text-white">{statusLoading ? '–' : s.completedTotal ?? '–'}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-white/30">completed</p>
+                </div>
+                <div>
+                  <p className="text-lg font-bold text-emerald-400/90">{statusLoading ? '–' : s.replies ?? '–'}</p>
                   <p className="text-[10px] uppercase tracking-wider text-white/30">replies</p>
                 </div>
               </div>
+
+              {/* Intake: how many candidates this recruiter actually loaded. */}
               <div className="mt-3 pt-3 border-t border-white/[0.05] flex items-center justify-between text-[11px]">
+                <span className="uppercase tracking-wider text-white/25">added</span>
+                <span className="text-white/45">
+                  today <span className="text-white/80 font-semibold">{s.addedToday ?? 0}</span>
+                  {' · '}yest <span className="text-white/80 font-semibold">{s.addedYesterday ?? 0}</span>
+                  {' · '}7d <span className="text-white/80 font-semibold">{s.added7d ?? 0}</span>
+                  {' · '}30d <span className="text-white/80 font-semibold">{s.added30d ?? 0}</span>
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-[11px]">
                 <span className="text-white/25">
-                  7d <span className="text-white/60 font-semibold">{s.sentWeek ?? 0}</span> · 30d{' '}
+                  sent 7d <span className="text-white/60 font-semibold">{s.sentWeek ?? 0}</span> · 30d{' '}
                   <span className="text-white/60 font-semibold">{s.sentMonth ?? 0}</span>
+                  {s.bounced ? <span className="text-red-400/70"> · {s.bounced} bounced</span> : null}
                 </span>
                 {s.mailboxScore != null && (
                   <span className={s.mailboxScore < 97 ? 'text-amber-400/80' : 'text-emerald-400/70'}>health {s.mailboxScore}</span>
@@ -641,34 +705,53 @@ export function SourcingDialer({ token }: { token: string }) {
         )}
 
         {results.length > 0 && (
-          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 space-y-1.5">
+          <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 space-y-2.5">
             <p className="text-xs text-white/60">
               <span className="text-emerald-400/90 font-semibold">{counts.added || 0} queued</span>
-              {counts.skipped_duplicate ? <span className="text-white/40"> · {counts.skipped_duplicate} already in Instantly</span> : null}
-              {counts.skipped_bad_email ? <span className="text-white/40"> · {counts.skipped_bad_email} bad email</span> : null}
-              {counts.skipped_no_first_name ? <span className="text-white/40"> · {counts.skipped_no_first_name} no first name</span> : null}
-              {counts.skipped_no_job_title ? <span className="text-white/40"> · {counts.skipped_no_job_title} no job title</span> : null}
-              {counts.skipped_unknown_recruiter ? (
-                <span className="text-white/40"> · {counts.skipped_unknown_recruiter} unknown recruiter</span>
-              ) : null}
-              {counts.skipped_campaign_not_ready ? (
-                <span className="text-amber-400/80"> · {counts.skipped_campaign_not_ready} sequence not ready</span>
-              ) : null}
-              {(counts.failed_create || 0) + (counts.failed_request || 0) + (counts.failed_activate || 0) ? (
-                <span className="text-red-400/70">
-                  {' '}
-                  · {(counts.failed_create || 0) + (counts.failed_request || 0) + (counts.failed_activate || 0)} failed
-                </span>
-              ) : null}
+              {' of '}
+              {results.length} submitted
             </p>
-            {results
-              .filter((r) => r.detail)
-              .slice(0, 3)
-              .map((r, i) => (
-                <p key={i} className="text-[11px] text-white/35">
-                  {r.detail}
-                </p>
+
+            {/* Every outcome with its count, so nothing needs digging into. */}
+            <div className="grid gap-1 sm:grid-cols-2">
+              {OUTCOMES.filter((o) => counts[o.key]).map((o) => (
+                <div key={o.key} className="flex items-center justify-between text-[11px] gap-2">
+                  <span className={o.tone}>{o.label}</span>
+                  <span className="text-white/70 font-semibold">{counts[o.key]}</span>
+                </div>
               ))}
+            </div>
+
+            {/* Verification breakdown: what MyEmailVerifier actually said. */}
+            {Object.keys(verifyCounts).length > 0 && (
+              <div className="pt-2 border-t border-white/[0.05]">
+                <p className="text-[10px] uppercase tracking-wider text-white/25 mb-1">Address check</p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                  {Object.entries(verifyCounts).map(([st, n]) => (
+                    <span key={st} className={/invalid|unknown/i.test(st) ? 'text-red-400/70' : 'text-white/45'}>
+                      {st} <span className="text-white/75 font-semibold">{n}</span>
+                    </span>
+                  ))}
+                </div>
+                {verifyCounts.unverified ? (
+                  <p className="text-[11px] text-amber-400/70 mt-1">
+                    Verification is off — set MYEMAILVERIFIER_API_KEY to stop bad addresses before they bounce.
+                  </p>
+                ) : null}
+              </div>
+            )}
+
+            {/* The specific addresses that did not make it, and why. */}
+            {failedRows.length > 0 && (
+              <div className="pt-2 border-t border-white/[0.05] max-h-40 overflow-y-auto space-y-0.5">
+                {failedRows.map((r, i) => (
+                  <p key={i} className="text-[11px] text-white/40">
+                    <span className="text-white/60">{r.email}</span>
+                    {r.detail ? ` — ${r.detail.replace(`${r.email} `, '')}` : ` — ${r.outcome.replace(/_/g, ' ')}`}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -680,7 +763,7 @@ export function SourcingDialer({ token }: { token: string }) {
             <ClipboardList className="h-4 w-4 text-[#D4A853]" />
             Queue &amp; activity
           </p>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <div className="flex rounded-lg border border-white/[0.08] overflow-hidden text-xs">
               {REPS.map((r) => (
                 <button
@@ -694,6 +777,19 @@ export function SourcingDialer({ token }: { token: string }) {
                 </button>
               ))}
             </div>
+            <div className="flex rounded-lg border border-white/[0.08] overflow-hidden text-xs">
+              {([true, false] as const).map((v) => (
+                <button
+                  key={String(v)}
+                  onClick={() => setPendingOnly(v)}
+                  className={`px-2.5 py-1.5 transition-colors ${
+                    pendingOnly === v ? 'bg-[#D4A853]/20 text-white' : 'text-white/40 hover:text-white/70'
+                  }`}
+                >
+                  {v ? 'Pending' : 'All'}
+                </button>
+              ))}
+            </div>
             <button
               onClick={() => loadQueue(queueRep)}
               className="text-white/40 hover:text-[#D4A853] p-1.5 rounded-md hover:bg-white/[0.05] transition-colors"
@@ -704,9 +800,13 @@ export function SourcingDialer({ token }: { token: string }) {
           </div>
         </div>
 
-        {queue.length === 0 ? (
+        {visibleQueue.length === 0 ? (
           <p className="text-xs text-white/30 py-6 text-center">
-            {queueLoading ? 'Loading...' : `No candidates in ${repName(queueRep)}'s queue yet.`}
+            {queueLoading
+              ? 'Loading...'
+              : queue.length
+                ? `Nobody pending for ${repName(queueRep)}. ${queue.length} finished or bounced — switch to All to see them.`
+                : `No candidates in ${repName(queueRep)}'s queue yet.`}
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -723,7 +823,7 @@ export function SourcingDialer({ token }: { token: string }) {
                 </tr>
               </thead>
               <tbody>
-                {queue.map((l) => (
+                {visibleQueue.map((l) => (
                   <tr key={l.id} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
                     <td className="px-2 py-2">
                       <div className="text-white/80">{l.name || '(no name)'}</div>

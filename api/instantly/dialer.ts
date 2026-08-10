@@ -188,6 +188,113 @@ function nextSendingWindow(from: Date): Date {
 // the request cost against a 20/min workspace cap, which is what was making bulk
 // uploads fail. One request per lead now, with account-wide protection intact.
 
+// ── Address verification (MyEmailVerifier) ──────────────────────────────────
+// 38 of 230 sourcing leads bounced (~16%), which burns mailbox reputation. Every
+// address is now checked before it becomes a lead.
+//
+// Policy per the outbound runbook: keep Valid AND Catch-all, drop Invalid and
+// Unknown. Catch-all must stay — freight and logistics domains run catch-all mail
+// servers almost universally, and a Valid-only rule drops ~94% of real people.
+//
+// Off unless MYEMAILVERIFIER_API_KEY is set, so nothing breaks before the key is
+// added; uploads simply behave as they do today.
+const VERIFY_KEEP = new Set(['valid', 'catch-all', 'catchall', 'catch_all']);
+
+async function verifyEmail(email: string): Promise<{ ok: boolean; status: string; skipped?: boolean }> {
+  const key = process.env.MYEMAILVERIFIER_API_KEY;
+  if (!key) return { ok: true, status: 'unverified', skipped: true };
+  try {
+    const r = await fetch(
+      `https://client.myemailverifier.com/verifier/validate_single/${encodeURIComponent(email)}/${encodeURIComponent(key)}`,
+      { headers: { Accept: 'application/json' } }
+    );
+    if (!r.ok) {
+      // Fail OPEN: a verifier outage must not stop recruiters working. A bad
+      // address costs one bounce; a blocked queue costs the whole day.
+      console.error('verifyEmail http', r.status, email);
+      return { ok: true, status: 'verifier_error', skipped: true };
+    }
+    const d: any = await r.json();
+    const status = String(d?.Status || d?.status || '').trim();
+    return { ok: VERIFY_KEEP.has(status.toLowerCase()), status: status || 'unknown' };
+  } catch (e: any) {
+    console.error('verifyEmail error', e?.message, email);
+    return { ok: true, status: 'verifier_error', skipped: true };
+  }
+}
+
+// ── The email log is the long-term memory ───────────────────────────────────
+// Instantly's email log outlives the lead record: verified on the sales dialer,
+// where the log held 39 distinct recipients against 37 surviving leads and both
+// replies were still present for leads that no longer existed. So totals are
+// counted from the log and survive purging.
+type CampaignLog = { contacted: Set<string>; replied: Set<string> };
+const logCache = new Map<string, { at: number; log: CampaignLog }>();
+const OUR_MAILBOXES = new Set(Object.values(REPS).map((r) => r.email.toLowerCase()));
+
+async function campaignLog(campaignId: string): Promise<CampaignLog> {
+  const hit = logCache.get(campaignId);
+  if (hit && Date.now() - hit.at < 60_000) return hit.log;
+
+  const contacted = new Set<string>();
+  const replied = new Set<string>();
+  let after: string | undefined;
+  for (let page = 0; page < 40; page++) {
+    const r = await inst(
+      `${INSTANTLY}/emails?campaign_id=${campaignId}&limit=100${after ? `&starting_after=${encodeURIComponent(after)}` : ''}`
+    );
+    if (!r || !r.ok) break;
+    const d: any = await r.json();
+    for (const e of d.items || []) {
+      const to = ((e.to_address_email_list || '').split(',')[0] || '').trim().toLowerCase();
+      const from = (e.from_address_email || '').trim().toLowerCase();
+      if (e.ue_type === 1 && to) contacted.add(to);
+      // A reply arrives FROM the candidate and TO the rep, so only the sender
+      // counts. Adding both sides would score our own mailbox as a replier.
+      if (e.ue_type === 2 && from && !OUR_MAILBOXES.has(from)) replied.add(from);
+    }
+    after = d.next_starting_after;
+    if (!after) break;
+  }
+  const log = { contacted, replied };
+  logCache.set(campaignId, { at: Date.now(), log });
+  return log;
+}
+
+// Finished leads are cleared out so the queue only shows people still in
+// sequence. Only ones older than this are touched: the intake counters below
+// read lead timestamps, and purging a lead added this week would make "added in
+// the last 7 days" fall retroactively.
+const PURGE_COMPLETED_AFTER_DAYS = 30;
+
+async function purgeCompleted(campaignId: string): Promise<number> {
+  const cutoff = Date.now() - PURGE_COMPLETED_AFTER_DAYS * 86_400_000;
+  const doomed: string[] = [];
+  let after: string | undefined;
+  while (doomed.length < 1000) {
+    const body: Record<string, unknown> = { campaign: campaignId, limit: 100 };
+    if (after) body.starting_after = after;
+    const r = await inst(`${INSTANTLY}/leads/list`, { method: 'POST', body: JSON.stringify(body) });
+    if (!r || !r.ok) break;
+    const d: any = await r.json();
+    for (const l of d.items || []) {
+      // status 3 = finished. Never active (1), and never bounced (-1): the
+      // bounce circuit breaker reads those.
+      if (l.campaign !== campaignId || l.status !== 3) continue;
+      const created = Date.parse(l.timestamp_created || '');
+      if (Number.isFinite(created) && created < cutoff) doomed.push(l.id);
+    }
+    after = d.next_starting_after;
+    if (!after) break;
+  }
+  let deleted = 0;
+  for (const id of doomed) {
+    if (await deleteLead(id)) deleted++;
+  }
+  if (deleted) logCache.delete(campaignId);
+  return deleted;
+}
+
 async function ensureCampaignActive(campaignId: string): Promise<boolean> {
   // The six campaigns ship as drafts (status 0), and a campaign that runs out of
   // leads flips to completed (status 3) — new leads then sit idle. Activate
@@ -398,18 +505,58 @@ async function repStatus(
     inst(`${INSTANTLY}/campaigns/analytics/daily?campaign_id=${rep.campaignId}&start_date=${monthAgo}&end_date=${today}`),
   ]);
 
-  let queued = 0;
-  let replies = 0;
   let sentTotal = 0;
   if (aResp && aResp.ok) {
     const rows: any[] = await aResp.json();
     const row = rows.find((r) => r.campaign_id === rep.campaignId) || rows[0];
-    if (row) {
-      queued = row.leads_count || 0;
-      replies = row.replies_count ?? row.reply_count ?? 0;
-      sentTotal = row.emails_sent_count || 0;
-    }
+    if (row) sentTotal = row.emails_sent_count || 0;
   }
+
+  // "In queue" used to print Instantly's leads_count, which is every record ever
+  // added — bounced and finished people included. Jessica read 63 while only 51
+  // were actually going to receive anything. Count the states separately instead.
+  let pending = 0;
+  let bounced = 0;
+  let completedHere = 0;
+  let addedToday = 0;
+  let addedYesterday = 0;
+  let added7d = 0;
+  let added30d = 0;
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfYesterday = new Date(startOfToday.getTime() - 86_400_000);
+  const sevenAgo = startOfToday.getTime() - 6 * 86_400_000; // today + the 6 before it
+  const thirtyAgo = startOfToday.getTime() - 29 * 86_400_000;
+
+  let leadAfter: string | undefined;
+  while (true) {
+    const body: Record<string, unknown> = { campaign: rep.campaignId, limit: 100 };
+    if (leadAfter) body.starting_after = leadAfter;
+    const r = await inst(`${INSTANTLY}/leads/list`, { method: 'POST', body: JSON.stringify(body) });
+    if (!r || !r.ok) break;
+    const d: any = await r.json();
+    for (const l of d.items || []) {
+      if (l.campaign !== rep.campaignId) continue;
+      if (l.status === 1) pending++;
+      else if (l.status === -1) bounced++;
+      else if (l.status === 3) completedHere++;
+      const created = Date.parse(l.timestamp_created || '');
+      if (!Number.isFinite(created)) continue;
+      if (created >= startOfToday.getTime()) addedToday++;
+      else if (created >= startOfYesterday.getTime()) addedYesterday++;
+      if (created >= sevenAgo) added7d++;
+      if (created >= thirtyAgo) added30d++;
+    }
+    leadAfter = d.next_starting_after;
+    if (!leadAfter) break;
+  }
+
+  // Totals come from the email log so they do not fall when finished leads are
+  // purged. Everyone ever contacted, minus those still in flight.
+  const log = await campaignLog(rep.campaignId);
+  const everContacted = log.contacted.size;
+  const completedTotal = Math.max(completedHere, everContacted - pending - bounced);
+  const replies = log.replied.size;
   // Read status from the campaign record, not analytics: a draft campaign with
   // no leads returns no analytics row at all, which would read as "unknown"
   // exactly when the recruiter most needs to see that it is still a draft.
@@ -440,7 +587,14 @@ async function repStatus(
     rep: repKey,
     name: rep.name,
     email: rep.email,
-    queued,
+    queued: pending,
+    bounced,
+    completedTotal,
+    everContacted,
+    addedToday,
+    addedYesterday,
+    added7d,
+    added30d,
     replies,
     sentTotal,
     sentToday,
@@ -505,6 +659,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!id) return res.status(400).json({ error: 'id required' });
       const ok = await deleteLead(id);
       return res.status(ok ? 200 : 500).json({ deleted: ok, id });
+    }
+
+    if (action === 'purge') {
+      // Housekeeping: drop finished leads older than the intake window so the
+      // queue stays honest without the "added" counters losing their history.
+      const purged: Record<string, number> = {};
+      for (const k of Object.keys(REPS)) purged[k] = await purgeCompleted(REPS[k].campaignId);
+      return res.status(200).json({ purged, olderThanDays: PURGE_COMPLETED_AFTER_DAYS });
     }
 
     if (action !== 'add') return res.status(400).json({ error: 'Unknown action' });
@@ -579,6 +741,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue;
       }
 
+      // Verify before creating. A bounced lead costs mailbox reputation, and
+      // reputation is the whole asset here.
+      const v = await verifyEmail(lead.email);
+      if (!v.ok) {
+        results.push({
+          email: lead.email,
+          rep: repKey,
+          outcome: 'skipped_unverified',
+          verifyStatus: v.status,
+          detail: `${lead.email} did not pass verification (${v.status})`,
+        });
+        continue;
+      }
+
       if (!activated.has(repKey)) {
         if (!(await ensureCampaignActive(repCfg.campaignId))) {
           results.push({ email: lead.email, rep: repKey, outcome: 'failed_activate' });
@@ -595,7 +771,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const created = await createLead(repCfg.campaignId, lead);
       if (created.outcome === 'added') createdThisRequest.add(emailKey);
-      results.push({ email: lead.email, rep: repKey, ...created });
+      results.push({ email: lead.email, rep: repKey, verifyStatus: v.status, ...created });
     }
 
     return res.status(200).json({ results });
