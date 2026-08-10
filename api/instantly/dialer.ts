@@ -528,6 +528,12 @@ async function repStatus(
   const sevenAgo = startOfToday.getTime() - 6 * 86_400_000; // today + the 6 before it
   const thirtyAgo = startOfToday.getTime() - 29 * 86_400_000;
 
+  // Day-by-day intake, keyed on the Central business day so it lines up with the
+  // sending window rather than with UTC.
+  const perDay = new Map<string, number>();
+  const dayKey = (ms: number) =>
+    new Date(ms).toLocaleDateString('en-CA', { timeZone: TIMEZONE }); // en-CA gives YYYY-MM-DD
+
   let leadAfter: string | undefined;
   while (true) {
     const body: Record<string, unknown> = { campaign: rep.campaignId, limit: 100 };
@@ -542,6 +548,7 @@ async function repStatus(
       else if (l.status === 3) completedHere++;
       const created = Date.parse(l.timestamp_created || '');
       if (!Number.isFinite(created)) continue;
+      perDay.set(dayKey(created), (perDay.get(dayKey(created)) || 0) + 1);
       if (created >= startOfToday.getTime()) addedToday++;
       else if (created >= startOfYesterday.getTime()) addedYesterday++;
       if (created >= sevenAgo) added7d++;
@@ -550,6 +557,10 @@ async function repStatus(
     leadAfter = d.next_starting_after;
     if (!leadAfter) break;
   }
+  const addedByDay = [...perDay.entries()]
+    .map(([date, count]) => ({ date, count }))
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+    .slice(0, 30);
 
   // Totals come from the email log so they do not fall when finished leads are
   // purged. Everyone ever contacted, minus those still in flight.
@@ -595,6 +606,7 @@ async function repStatus(
     addedYesterday,
     added7d,
     added30d,
+    addedByDay,
     replies,
     sentTotal,
     sentToday,

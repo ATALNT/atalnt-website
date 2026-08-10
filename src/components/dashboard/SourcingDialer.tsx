@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Voicemail, Users, Send, Loader2, RefreshCw, X, AlertCircle, ClipboardList, CheckCircle2 } from 'lucide-react';
+import { Voicemail, Users, Send, Loader2, RefreshCw, X, AlertCircle, ClipboardList, CheckCircle2, CalendarDays } from 'lucide-react';
 
 // ─── Sourcing dial companion ────────────────────────────────────────────────
 // Recruiters paste the candidates they called and left voicemails for. Each one
@@ -470,6 +470,33 @@ export function SourcingDialer({ token }: { token: string }) {
     bounced: 'text-red-400/70',
   };
   const repName = (k: string) => REPS.find((r) => r.key === k)?.name || k;
+
+  // Pivot each rep's per-day intake into one row per day, so the team can be
+  // compared side by side rather than card by card.
+  const dayRows = (() => {
+    const byDate = new Map<string, Record<string, number>>();
+    for (const s of status) {
+      for (const d of s.addedByDay || []) {
+        if (!byDate.has(d.date)) byDate.set(d.date, {});
+        byDate.get(d.date)![s.rep] = d.count;
+      }
+    }
+    return [...byDate.entries()]
+      .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+      .slice(0, 14)
+      .map(([date, byRep]) => ({ date, byRep, total: Object.values(byRep).reduce((a, b) => a + b, 0) }));
+  })();
+
+  const dayLabel = (date: string) => {
+    // date is already a Central calendar day (YYYY-MM-DD); render it without a
+    // timezone shift by pinning to midday.
+    const d = new Date(`${date}T12:00:00`);
+    const todayKey = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    const yKey = new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+    if (date === todayKey) return 'Today';
+    if (date === yKey) return 'Yesterday';
+    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+  };
   // Pending = still due an email. Everything else is history.
   const visibleQueue = pendingOnly ? queue.filter((l) => l.state === 'queued' || l.state === 'in_sequence') : queue;
 
@@ -549,6 +576,44 @@ export function SourcingDialer({ token }: { token: string }) {
         })}
       </div>
       {statusErr && <p className="text-xs text-red-400/70">{statusErr}</p>}
+
+      {/* ── Added per day, whole team side by side ── */}
+      {dayRows.length > 0 && (
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-3 backdrop-blur-sm">
+          <p className="text-sm font-semibold text-white flex items-center gap-2">
+            <CalendarDays className="h-4 w-4 text-[#D4A853]" />
+            Candidates added per day
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[560px]">
+              <thead className="text-white/35 border-b border-white/[0.06]">
+                <tr>
+                  <th className="text-left font-medium px-2 py-2">Day</th>
+                  {REPS.map((r) => (
+                    <th key={r.key} className="text-center font-medium px-2 py-2">
+                      {r.name}
+                    </th>
+                  ))}
+                  <th className="text-center font-medium px-2 py-2 text-white/50">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dayRows.map((row) => (
+                  <tr key={row.date} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
+                    <td className="px-2 py-2 text-white/60 whitespace-nowrap">{dayLabel(row.date)}</td>
+                    {REPS.map((r) => (
+                      <td key={r.key} className={`px-2 py-2 text-center ${row.byRep[r.key] ? 'text-white/80' : 'text-white/15'}`}>
+                        {row.byRep[r.key] || '·'}
+                      </td>
+                    ))}
+                    <td className="px-2 py-2 text-center font-semibold text-[#D4A853]">{row.total}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ── Upload ── */}
       <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 space-y-4 backdrop-blur-sm">
