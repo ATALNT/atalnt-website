@@ -204,9 +204,19 @@ async function verifyEmail(email: string): Promise<{ ok: boolean; status: string
   const key = process.env.MYEMAILVERIFIER_API_KEY;
   if (!key) return { ok: true, status: 'unverified', skipped: true };
   try {
+    // The User-Agent is REQUIRED. MyEmailVerifier sits behind Cloudflare, which
+    // answers a default runtime UA with 403 error 1010 (browser_signature_banned).
+    // Without it every call fails, hits the fail-open branch below, and silently
+    // passes every address through as verified. Verified 2026-08-13.
     const r = await fetch(
       `https://client.myemailverifier.com/verifier/validate_single/${encodeURIComponent(email)}/${encodeURIComponent(key)}`,
-      { headers: { Accept: 'application/json' } }
+      {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+      }
     );
     if (!r.ok) {
       // Fail OPEN: a verifier outage must not stop recruiters working. A bad

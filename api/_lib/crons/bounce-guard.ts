@@ -58,7 +58,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!resp.ok) throw new Error(`analytics ${resp.status}`);
     const rows: CampaignAnalytics[] = await resp.json();
 
-    const active = rows.filter((r) => r.campaign_status === STATUS_ACTIVE);
+    // ISOLATED campaigns are NEVER auto-paused (operator directive 2026-08-13:
+    // "dont let those emails turn off from the bounce guard anymore i'll monitor
+    // those manually"). Their high bounce comes from unverified pasted lists, and
+    // pausing them stops the recruiters working. Excluded here AND in
+    // .github/ci/instantly-health.mjs — both must stay in sync or the other one
+    // re-pauses them within the hour.
+    const active = rows.filter(
+      (r) => r.campaign_status === STATUS_ACTIVE && !(r.campaign_name || '').startsWith('ISOLATED:')
+    );
     const offenders = active
       .map((r) => {
         const sent = r.emails_sent_count || 0;

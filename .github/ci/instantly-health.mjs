@@ -272,6 +272,16 @@ async function runOnce(iterIndex = 0) {
         const rate = sent > 0 ? bounced / sent : 0;
         const trip = (rate > 0.10 && sent >= 100) || (rate > 0.05 && sent >= 300);
         if (!trip) continue;
+        // ISOLATED campaigns are NEVER auto-paused (operator directive 2026-08-13:
+        // "dont let those emails turn off from the bounce guard anymore i'll monitor
+        // those manually"). Jessica (18.3%) and Kelona (13.3%) were being tripped
+        // repeatedly, which stops the recruiters working. Still logged and still
+        // reported as a problem so the bounce rate stays visible, just not acted on.
+        if (isIsolatedName(row.campaign_name)) {
+          log(`  BOUNCE-ALERT (not paused, ISOLATED) ${row.campaign_name} rate=${(rate * 100).toFixed(1)}% (${bounced}/${sent})`);
+          problems.push(`BOUNCE ${(rate * 100).toFixed(1)}% on ISOLATED "${row.campaign_name}" (${bounced}/${sent}) — left running, monitor manually`);
+          continue;
+        }
         const pz = await req(`https://api.instantly.ai/api/v2/campaigns/${row.campaign_id}/pause`, { method: 'POST', body: '{}' });
         const chk = await req(`https://api.instantly.ai/api/v2/campaigns/${row.campaign_id}`);
         const st = chk && chk.ok ? (await chk.json()).status : null;
