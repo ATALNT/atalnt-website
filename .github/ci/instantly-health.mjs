@@ -80,6 +80,15 @@ const DIALER_SENDERS = new Set(ISOLATED_OWNER.values());
 const DIALER_LIMIT = 30;
 const isIsolatedName = (n) => (n || '').startsWith('ISOLATED:');
 
+// GMAIL-ONLY campaigns: name prefix "GMAIL:" restricts that campaign's sender
+// roster to free mailboxes only. Needed because the roster sync below otherwise
+// drafts EVERY clean mailbox into EVERY active campaign, so a hand-built
+// gmail-only campaign would silently acquire the whole domain fleet on the next
+// run. Mirrored in api/_lib/crons/health-score.ts; both must agree.
+const FREE_MAILBOX_RE = /@(gmail|yahoo|hotmail|outlook|aol|icloud|live|msn)\.com$/i;
+const isFreeMailbox = (e) => FREE_MAILBOX_RE.test((e || '').trim());
+const isGmailOnlyName = (n) => (n || '').startsWith('GMAIL:');
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(m);
 
@@ -234,9 +243,16 @@ async function runOnce(iterIndex = 0) {
     const full = await g.json();
     const cur = (full.email_list || []);
     const curLower = new Set(cur.map((e) => e.toLowerCase()));
+    // GMAIL-ONLY campaigns (name starts "GMAIL:"): roster is restricted to free
+    // mailboxes. Without this the sync below injects the whole domain fleet into
+    // them within one run, which silently breaks a deliberately gmail-only send.
+    // Same hysteresis still applies, just over a filtered pool.
+    const gmailOnly = isGmailOnlyName(full.name);
+    const poolStay = (e) => canStay.has(e.toLowerCase()) && (!gmailOnly || isFreeMailbox(e));
+    const poolAdd = canAddFinal.filter((e) => !gmailOnly || isFreeMailbox(e));
     // keep existing members while they are >=97 & clean; admit new only at >=98 & clean
-    const stayers = cur.filter((e) => canStay.has(e.toLowerCase()));
-    const newcomers = canAddFinal.filter((e) => !curLower.has(e.toLowerCase()));
+    const stayers = cur.filter((e) => poolStay(e));
+    const newcomers = poolAdd.filter((e) => !curLower.has(e.toLowerCase()));
     const target = [...stayers, ...newcomers];
     const removed = cur.length - stayers.length;
     const added = newcomers.length;

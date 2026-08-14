@@ -74,6 +74,8 @@ async function setDailyLimit(email: string, limit: number, headers: Record<strin
 
 export const maxDuration = 300;
 
+const FREE_MAILBOX_RE = /@(gmail|yahoo|hotmail|outlook|aol|icloud|live|msn)\.com$/i;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authHeader = req.headers.authorization;
   const cronSecret = process.env.CRON_SECRET;
@@ -159,10 +161,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const resp = await fetch(`https://api.instantly.ai/api/v2/campaigns/${c.id}`, { method: 'GET', headers });
       if (!resp.ok) continue;
       const full: InstantlyCampaign = await resp.json();
+      // GMAIL-ONLY campaigns ("GMAIL:" name prefix) draw only from free mailboxes.
+      // Without this, this sync injects the whole domain fleet into a deliberately
+      // gmail-only campaign. Mirrored in .github/ci/instantly-health.mjs; both must
+      // agree or one silently undoes the other on its next run.
+      const gmailOnly = (full.name || '').startsWith('GMAIL:');
+      const pool = gmailOnly ? healthyList.filter((e) => FREE_MAILBOX_RE.test(e)) : healthyList;
       const current = (full.email_list || []).map((e) => e.toLowerCase());
       const currentSet = new Set(current);
-      const removed = current.filter((e) => !healthy.has(e)).length;
-      const added = healthyList.filter((e) => !currentSet.has(e.toLowerCase())).length;
+      const removed = current.filter((e) => !healthy.has(e) || (gmailOnly && !FREE_MAILBOX_RE.test(e))).length;
+      const added = pool.filter((e) => !currentSet.has(e.toLowerCase())).length;
       if (removed === 0 && added === 0) {
         campaignChanges.push({ campaign: full.name || c.id, removed: 0, added: 0, senders: current.length, verified: true });
         continue;
@@ -170,7 +178,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const patch = await fetch(`https://api.instantly.ai/api/v2/campaigns/${c.id}`, {
         method: 'PATCH',
         headers,
-        body: JSON.stringify({ email_list: healthyList }),
+        body: JSON.stringify({ email_list: pool }),
       });
       // Verify with a fresh GET — never trust the write.
       let verified = false;
