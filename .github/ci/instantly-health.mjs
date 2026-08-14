@@ -277,9 +277,13 @@ async function runOnce(iterIndex = 0) {
         // those manually"). Jessica (18.3%) and Kelona (13.3%) were being tripped
         // repeatedly, which stops the recruiters working. Still logged and still
         // reported as a problem so the bounce rate stays visible, just not acted on.
+        // LOG ONLY, never a "problem". A problem exits the run non-zero and GitHub
+        // emails on every failure. These bounce rates are cumulative and permanently
+        // over threshold (the already-queued leads predate verification), so pushing
+        // a problem here fired a failure email every 4 hours forever. The operator
+        // monitors these manually, so visibility in the log is enough.
         if (isIsolatedName(row.campaign_name)) {
-          log(`  BOUNCE-ALERT (not paused, ISOLATED) ${row.campaign_name} rate=${(rate * 100).toFixed(1)}% (${bounced}/${sent})`);
-          problems.push(`BOUNCE ${(rate * 100).toFixed(1)}% on ISOLATED "${row.campaign_name}" (${bounced}/${sent}) — left running, monitor manually`);
+          log(`  BOUNCE-ALERT (not paused, ISOLATED, monitored manually) ${row.campaign_name} rate=${(rate * 100).toFixed(1)}% (${bounced}/${sent})`);
           continue;
         }
         const pz = await req(`https://api.instantly.ai/api/v2/campaigns/${row.campaign_id}/pause`, { method: 'POST', body: '{}' });
