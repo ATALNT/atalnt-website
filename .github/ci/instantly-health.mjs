@@ -343,16 +343,35 @@ async function runOnce(iterIndex = 0) {
     if (newest >= since) offenders.push({ email: em, last: new Date(newest).toISOString(), score: score(a), state: a.status });
   });
   log(`audit: last ${AUDIT_WINDOW_MIN}min non_roster_checked=${nonRoster.length} offenders=${offenders.length}`);
-  for (const o of offenders) log(`  OFFENDER ${o.email} last_campaign_send=${o.last} score=${o.score} status=${o.state}`);
-  if (offenders.length) problems.push(`${offenders.length} non-roster mailboxes SENT within ${AUDIT_WINDOW_MIN}min — leaking NOW`);
 
-  // SELF-HEAL (2026-07-10): one flush cycle was observed not to take — the stale
-  // queue kept draining until the next roster write. If any offender's send is
-  // newer than this iteration's start, force a fresh pause->activate on every
-  // active campaign; the next iteration's audit verifies it held.
-  const liveLeak = offenders.some((o) => Date.parse(o.last) >= iterationStart - 60_000);
-  if (liveLeak) {
-    log('  REACTIVE FLUSH: re-flushing all active campaigns (leak newer than iteration start)');
+  // Classify offenders (2026-08-15). Not every non-roster send is an emergency:
+  // a mailbox that dipped from 97 to 96 gets pulled from the roster, and one
+  // queued send can still fire afterward — PROVEN when a flush ran before the
+  // 9:00 window opened and Instantly fired the stale send at window open
+  // (priftiendri289@gmail.com, score 96, sent 9:03). That straggler is
+  // self-healing: we flush below and the belt already zeroed its limit. Failing
+  // the run for it just emails the operator about a fixed problem every 4 hours.
+  // HARD offenders still fail loudly: protected warmup-only mailboxes (never
+  // acceptable), error-state accounts, score < 95 (nowhere near the roster,
+  // something else re-admitted it), or 3+ dropouts at once (systemic churn).
+  const hard = [];
+  const dropouts = [];
+  for (const o of offenders) {
+    const benign = o.state === 1 && o.score >= 95 && !PROTECTED_WARMUP_ONLY.has(o.email);
+    (benign ? dropouts : hard).push(o);
+    log(`  OFFENDER${benign ? ' (hysteresis dropout, self-healing)' : ''} ${o.email} last_campaign_send=${o.last} score=${o.score} status=${o.state}`);
+  }
+  if (hard.length) problems.push(`${hard.length} non-roster mailboxes SENT within ${AUDIT_WINDOW_MIN}min — leaking NOW`);
+  if (dropouts.length >= 3) problems.push(`${dropouts.length} hysteresis-dropout mailboxes leaked sends in one window — flush is not holding, investigate`);
+
+  // SELF-HEAL (2026-07-10, widened 2026-08-15): one flush cycle was observed
+  // not to take — the stale queue kept draining until the next roster write.
+  // Previously this only re-flushed when a leak was newer than iteration start,
+  // which let older-but-in-window stragglers keep their stale queue entries.
+  // Now ANY offender in the window triggers a flush of every active campaign;
+  // a failed flush is always a hard problem.
+  if (offenders.length) {
+    log('  REACTIVE FLUSH: re-flushing all active campaigns (offender in audit window)');
     for (const c of campaigns) {
       await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}/pause`, { method: 'POST', body: '{}' });
       await sleep(4000);
@@ -360,6 +379,7 @@ async function runOnce(iterIndex = 0) {
       const chk = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`);
       const st = chk && chk.ok ? (await chk.json()).status : null;
       if (st !== 1) problems.push(`reactive flush: campaign ${c.id} NOT ACTIVE after cycle (status=${st})`);
+      else log(`    flushed ${c.name} ok`);
     }
   }
 
