@@ -92,24 +92,45 @@ const isGmailOnlyName = (n) => (n || '').startsWith('GMAIL:');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (m) => console.log(m);
 
-async function req(url, opts = {}, tries = 5) {
+// Instantly rate-limits ~20 req/min PER WORKSPACE. On a GitHub Actions runner
+// (shared egress IPs, and our own concurrent calls) that ceiling is hit routinely,
+// while the same code on a home IP never sees it. The old backoff topped out at
+// ~15s total across 5 tries, which is far too short to ride out a 60s window, so
+// reads failed on CI and the guard reported them as breaches. Now: exponential
+// backoff with jitter, honoring Retry-After, up to ~2.5 minutes.
+async function req(url, opts = {}, tries = 8) {
   for (let i = 0; i < tries; i++) {
     try {
       const r = await fetch(url, { headers: H, ...opts });
-      if (r.status === 429 || r.status >= 500) { await sleep(1500 * (i + 1)); continue; }
+      if (r.status === 429 || r.status >= 500) {
+        const ra = Number(r.headers.get('retry-after'));
+        const wait = Number.isFinite(ra) && ra > 0
+          ? Math.min(ra * 1000, 60_000)
+          : Math.min(2000 * 2 ** i, 30_000) + Math.floor(Math.random() * 750);
+        await sleep(wait);
+        continue;
+      }
       return r;
-    } catch { await sleep(1500 * (i + 1)); }
+    } catch {
+      await sleep(Math.min(2000 * 2 ** i, 30_000) + Math.floor(Math.random() * 750));
+    }
   }
   return null;
 }
 
+// Returns the full list, and records on `fetchAll.aborted` whether pagination
+// ended because we ran out of pages (false) or because a request failed (true).
+// Without this a rate-limited page break returns a PARTIAL list that looks like
+// a real answer: the caller then sees "only 300 accounts" and either alarms
+// falsely or, worse, strips rosters based on an incomplete picture.
 async function fetchAll(base) {
   const out = [];
   let after;
+  fetchAll.aborted = false;
   while (true) {
     const url = `${base}${base.includes('?') ? '&' : '?'}limit=100${after ? `&starting_after=${encodeURIComponent(after)}` : ''}`;
     const r = await req(url);
-    if (!r || !r.ok) break;
+    if (!r || !r.ok) { fetchAll.aborted = true; break; }
     const d = await r.json();
     out.push(...(d.items || []));
     if (d.next_starting_after) after = d.next_starting_after; else break;
@@ -134,10 +155,22 @@ async function inBatches(items, size, fn) {
 
 async function runOnce(iterIndex = 0) {
   const problems = [];
+  // Soft failures = "could not check this cycle", NOT "something is broken".
+  // The guard runs every 4 hours; a rate-limited read is noise, not a breach.
+  // Only alarm if MOST reads fail, which means the key or the account is dead.
+  const softFail = [];
   const iterationStart = Date.now();
 
   // ---- accounts ----
   const accounts = await fetchAll('https://api.instantly.ai/api/v2/accounts');
+  const accountsPartial = fetchAll.aborted;
+  // A partial account list must NEVER drive enforcement: acting on it would strip
+  // rosters for mailboxes we simply failed to page in. Bail quietly and let the
+  // next 4-hourly run do the work, rather than emailing about a rate limit.
+  if (accountsPartial) {
+    log(`  SKIP  account fetch incomplete (${accounts.length} paged before a failure). Doing nothing this cycle.`);
+    return problems;
+  }
   if (accounts.length < 600) { problems.push(`account fetch suspicious: ${accounts.length}`); return problems; }
   // status_message is UNRELIABLE: June OAuth errors never clear while the mailbox
   // demonstrably sends (warmup flowing, score 93-100). Only live status counts.
@@ -239,7 +272,7 @@ async function runOnce(iterIndex = 0) {
   }
   for (const c of campaigns) {
     const g = await req(`https://api.instantly.ai/api/v2/campaigns/${c.id}`);
-    if (!g || !g.ok) { problems.push(`cannot read campaign ${c.id}`); continue; }
+    if (!g || !g.ok) { softFail.push(`campaign ${c.id} unreadable (rate limit or transient)`); log(`  SKIP  campaign ${c.id}: unreadable this cycle, will retry next run`); continue; }
     const full = await g.json();
     const cur = (full.email_list || []);
     const curLower = new Set(cur.map((e) => e.toLowerCase()));
@@ -309,7 +342,7 @@ async function runOnce(iterIndex = 0) {
         problems.push(`BOUNCE GUARD paused campaign "${row.campaign_name}" at ${(rate * 100).toFixed(1)}% bounce (${bounced}/${sent})`);
         if (!(pz && pz.ok) || st !== 2) problems.push(`bounce guard FAILED to pause ${row.campaign_name}`);
       }
-    } else problems.push('bounce guard: analytics endpoint unreachable');
+    } else { softFail.push('analytics endpoint unreachable'); log('  SKIP  bounce guard: analytics unreachable this cycle'); }
   }
 
   // ---- reality audit: per-mailbox newest campaign send, non-roster accounts ----
@@ -360,6 +393,14 @@ async function runOnce(iterIndex = 0) {
     const benign = o.state === 1 && o.score >= 95 && !PROTECTED_WARMUP_ONLY.has(o.email);
     (benign ? dropouts : hard).push(o);
     log(`  OFFENDER${benign ? ' (hysteresis dropout, self-healing)' : ''} ${o.email} last_campaign_send=${o.last} score=${o.score} status=${o.state}`);
+  }
+  // Escalate soft failures ONLY when they are widespread: half or more of the
+  // campaigns unreadable in one cycle means the API key or account is broken,
+  // which is worth an email. One or two is just the rate limiter.
+  if (softFail.length && softFail.length >= Math.max(2, Math.ceil(campaigns.length / 2))) {
+    problems.push(`${softFail.length} API reads failed this cycle (${softFail.slice(0, 3).join('; ')}) — key or account may be down`);
+  } else if (softFail.length) {
+    log(`  note: ${softFail.length} transient read failure(s), tolerated: ${softFail.join('; ')}`);
   }
   if (hard.length) problems.push(`${hard.length} non-roster mailboxes SENT within ${AUDIT_WINDOW_MIN}min — leaking NOW`);
   if (dropouts.length >= 3) problems.push(`${dropouts.length} hysteresis-dropout mailboxes leaked sends in one window — flush is not holding, investigate`);
