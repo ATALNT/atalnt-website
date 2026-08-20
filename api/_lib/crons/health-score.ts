@@ -26,6 +26,7 @@ interface InstantlyAccount {
   status: number; // 1=active, 2=paused, -1=error
   daily_limit: number | null;
   stat_warmup_score: number | null;
+  timestamp_created?: string; // needed by the domain warmup ramp
 }
 
 interface InstantlyCampaign {
@@ -75,6 +76,16 @@ async function setDailyLimit(email: string, limit: number, headers: Record<strin
 export const maxDuration = 300;
 
 const FREE_MAILBOX_RE = /@(gmail|yahoo|hotmail|outlook|aol|icloud|live|msn)\.com$/i;
+
+// DOMAIN WARMUP RAMP — mirror of .github/ci/instantly-health.mjs. A non-free
+// mailbox younger than DOMAIN_RAMP_DAYS is capped at DOMAIN_RAMP_LIMIT no matter
+// how good its warmup score looks. Both files must agree or one resets the other.
+const DOMAIN_RAMP_LIMIT = 5;
+const DOMAIN_RAMP_DAYS = 21;
+const ageDays = (a: { timestamp_created?: string }) => {
+  const t = Date.parse(a.timestamp_created || '');
+  return Number.isFinite(t) ? (Date.now() - t) / 86_400_000 : Infinity;
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authHeader = req.headers.authorization;
@@ -128,7 +139,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const desired = (a: InstantlyAccount) => {
       const em = a.email.toLowerCase();
       if (DIALER_SENDERS.has(em)) return DIALER_LIMIT;
-      return healthy.has(em) ? dailyLimit : 0;
+      if (!healthy.has(em)) return 0;
+      if (!FREE_MAILBOX_RE.test(a.email) && ageDays(a) < DOMAIN_RAMP_DAYS) return DOMAIN_RAMP_LIMIT;
+      return dailyLimit;
     };
     const toFix = accounts.filter((a) => (a.daily_limit ?? -1) !== desired(a));
     const BATCH = 15;
@@ -166,10 +179,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // gmail-only campaign. Mirrored in .github/ci/instantly-health.mjs; both must
       // agree or one silently undoes the other on its next run.
       const gmailOnly = (full.name || '').startsWith('GMAIL:');
-      const pool = gmailOnly ? healthyList.filter((e) => FREE_MAILBOX_RE.test(e)) : healthyList;
+      const domainOnly = (full.name || '').startsWith('DOMAIN:');
+      const pool = healthyList.filter(
+        (e) => (!gmailOnly || FREE_MAILBOX_RE.test(e)) && (!domainOnly || !FREE_MAILBOX_RE.test(e))
+      );
       const current = (full.email_list || []).map((e) => e.toLowerCase());
       const currentSet = new Set(current);
-      const removed = current.filter((e) => !healthy.has(e) || (gmailOnly && !FREE_MAILBOX_RE.test(e))).length;
+      const removed = current.filter((e) => !healthy.has(e) || (gmailOnly && !FREE_MAILBOX_RE.test(e)) || (domainOnly && FREE_MAILBOX_RE.test(e))).length;
       const added = pool.filter((e) => !currentSet.has(e.toLowerCase())).length;
       if (removed === 0 && added === 0) {
         campaignChanges.push({ campaign: full.name || c.id, removed: 0, added: 0, senders: current.length, verified: true });

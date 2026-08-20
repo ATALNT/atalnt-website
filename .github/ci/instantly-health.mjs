@@ -78,6 +78,24 @@ const ISOLATED_OWNER = new Map([
 ]);
 const DIALER_SENDERS = new Set(ISOLATED_OWNER.values());
 const DIALER_LIMIT = 30;
+
+// DOMAIN WARMUP RAMP (2026-08-20, operator directive: "send 5 emails from healthy
+// domain emails"). The new 300-mailbox fleet is 2-5 days old. Instantly's warmup
+// score hits 100 long before Google and Microsoft form an opinion, so a fresh
+// domain sending 20/day is exactly how the previous fleet burned. Any non-free
+// mailbox younger than DOMAIN_RAMP_DAYS is capped at DOMAIN_RAMP_LIMIT regardless
+// of score; it graduates to DAILY_LIMIT automatically once it ages past the gate.
+const DOMAIN_RAMP_LIMIT = 5;
+const DOMAIN_RAMP_DAYS = 21;
+const ageDays = (a) => {
+  const t = Date.parse(a.timestamp_created || '');
+  return Number.isFinite(t) ? (Date.now() - t) / 86_400_000 : Infinity;
+};
+
+// DOMAIN-ONLY campaigns: name prefix "DOMAIN:" restricts the roster to non-free
+// mailboxes, the mirror of the GMAIL: rule. Without it the roster sync would mix
+// the gmail fleet into a deliberately domain-only ramp campaign.
+const isDomainOnlyName = (n) => (n || '').startsWith('DOMAIN:');
 const isIsolatedName = (n) => (n || '').startsWith('ISOLATED:');
 
 // GMAIL-ONLY campaigns: name prefix "GMAIL:" restricts that campaign's sender
@@ -228,7 +246,10 @@ async function runOnce(iterIndex = 0) {
   const want = (a) => {
     const em = a.email.toLowerCase();
     if (DIALER_SENDERS.has(em)) return DIALER_LIMIT;
-    return canStay.has(em) ? DAILY_LIMIT : 0;
+    if (!canStay.has(em)) return 0;
+    // fresh domain mailboxes ramp at 5/day until they age past the gate
+    if (!isFreeMailbox(a.email) && ageDays(a) < DOMAIN_RAMP_DAYS) return DOMAIN_RAMP_LIMIT;
+    return DAILY_LIMIT;
   };
   const fix = accounts.filter((a) => (a.daily_limit ?? -1) !== want(a));
   await inBatches(fix, 10, async (a) => {
@@ -281,8 +302,10 @@ async function runOnce(iterIndex = 0) {
     // them within one run, which silently breaks a deliberately gmail-only send.
     // Same hysteresis still applies, just over a filtered pool.
     const gmailOnly = isGmailOnlyName(full.name);
-    const poolStay = (e) => canStay.has(e.toLowerCase()) && (!gmailOnly || isFreeMailbox(e));
-    const poolAdd = canAddFinal.filter((e) => !gmailOnly || isFreeMailbox(e));
+    const domainOnly = isDomainOnlyName(full.name);
+    const inPool = (e) => (!gmailOnly || isFreeMailbox(e)) && (!domainOnly || !isFreeMailbox(e));
+    const poolStay = (e) => canStay.has(e.toLowerCase()) && inPool(e);
+    const poolAdd = canAddFinal.filter((e) => inPool(e));
     // keep existing members while they are >=97 & clean; admit new only at >=98 & clean
     const stayers = cur.filter((e) => poolStay(e));
     const newcomers = poolAdd.filter((e) => !curLower.has(e.toLowerCase()));
