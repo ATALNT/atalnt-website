@@ -11,6 +11,11 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    // Local dev: Vite serves the SPA, `vercel dev --listen 3100` serves api/*.
+    // Forward /api to it so the dashboards work without a production deploy.
+    proxy: {
+      "/api": { target: "http://localhost:3100", changeOrigin: true },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

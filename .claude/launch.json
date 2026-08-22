@@ -4,8 +4,34 @@
     {
       "name": "dev",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--port", "5173", "--host"],
+      "runtimeArgs": [
+        "vite",
+        "--port",
+        "5173",
+        "--host"
+      ],
       "port": 5173
+    },
+    {
+      "name": "adg-mockup",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "--yes",
+        "serve",
+        "-l",
+        "8931",
+        "/Users/nikjain55/Desktop/Claude Code/ADG Balfour"
+      ],
+      "port": 8931
+    },
+    {
+      "name": "vercel-dev",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "set -a; . ./.env.local; set +a; exec npx vercel dev --listen 3100 --yes"
+      ],
+      "port": 3100
     }
   ]
 }

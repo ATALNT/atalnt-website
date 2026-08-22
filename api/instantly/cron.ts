@@ -7,6 +7,7 @@
 //   bounce  -> bounce-rate circuit breaker (pause campaigns over threshold)
 //   reply   -> reply manager
 //   respond -> lead responder
+//   aggregate -> daily per-campaign audience aggregates for the command center
 // Each handler keeps its own file under api/_lib/crons/ (underscore dirs are
 // not routed/counted). Schedules are in vercel.json, one entry per task.
 // ============================================
@@ -17,6 +18,7 @@ import pruneLeads from '../_lib/crons/prune-leads.js';
 import bounceGuard from '../_lib/crons/bounce-guard.js';
 import replyManager from '../_lib/crons/reply-manager.js';
 import leadResponder from '../_lib/crons/lead-responder.js';
+import aggregateCampaigns from '../_lib/crons/aggregate-campaigns.js';
 
 export const maxDuration = 300;
 
@@ -26,6 +28,7 @@ const HANDLERS: Record<string, (req: VercelRequest, res: VercelResponse) => Prom
   bounce: bounceGuard,
   reply: replyManager,
   respond: leadResponder,
+  aggregate: aggregateCampaigns,
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

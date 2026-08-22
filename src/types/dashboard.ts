@@ -188,3 +188,106 @@ export interface ApiResponse<T> {
   error?: string;
   timestamp: string;
 }
+
+// ============================================
+// Instantly Command Center
+// ============================================
+
+export type ReplyClass = 'demo' | 'positive' | 'neutral' | 'negative' | 'wrong_person' | 'auto';
+
+export interface InstantlyCampaignRow {
+  id: string;
+  name: string;
+  status: number;
+  isolated: boolean;
+  senders: number;
+  leads: number;
+  contacted: number;
+  remaining: number;
+  sent: number;
+  replies: number;
+  auto_replies: number;
+  bounced: number;
+  opportunities: number;
+  reply_rate: number;
+  bounce_rate: number;
+  health: { light: 'green' | 'yellow' | 'red'; reason: string };
+  created?: string;
+}
+
+export interface InstantlyOverview {
+  generated_at: string;
+  tiles: {
+    sends_today: number; ceiling: number; sends_pct: number;
+    reply_rate: number; historical_reply_rate: number; replies_today: number;
+    positive_replies: number; positive_today: number;
+    bounce_rate: number; bounce_trip: number;
+    demos_requested: number;
+  };
+  active: InstantlyCampaignRow[];
+  past: InstantlyCampaignRow[];
+  daily: Record<string, { date: string; sent: number; replies: number }[]>;
+  fleet: { gmail_total: number; gmail_eligible: number; error_state: number; total: number };
+  guard: { ran_at: string | null; verdict: string; problems: string[] };
+}
+
+export interface InstantlyAudience {
+  as_of: string;
+  total: number;
+  with_company: number;
+  unique_companies: number;
+  title_groups: Record<string, number>;
+  top_companies: { name: string; count: number }[];
+  status_funnel: Record<string, number>;
+  subject_split: { subject: string; leads: number; replies: number; reply_rate: number }[];
+  verticals: Record<string, number>;
+  sources: Record<string, number>;
+  reply_classes: Record<string, number>;
+}
+
+export interface InstantlyCampaignDetail {
+  id: string;
+  name: string;
+  status: number;
+  senders: number;
+  schedule: { timing?: { from: string; to: string }; days?: Record<string, boolean>; timezone?: string } | null;
+  daily: { date: string; sent: number; replies: number; auto: number; opportunities: number }[];
+  steps: { step: number; variant: string | null; sent: number; replies: number; reply_rate: number }[];
+  sequence: { step: number; delay: number; subject: string; body_html: string }[];
+  audience: InstantlyAudience | null;
+}
+
+export interface InstantlyMessaging {
+  lead: { email: string; first_name: string; company: string; group: string } | null;
+  leads: { email: string; first_name: string; company: string; group: string }[];
+  senders: number;
+  steps: { step: number; delay_days: number; subject: string; body: string }[];
+  unresolved: boolean;
+}
+
+export interface InstantlyReply {
+  id: string;
+  thread_id: string;
+  campaign_id: string;
+  campaign: string;
+  from_email: string;
+  from_name: string;
+  to_mailbox: string;
+  subject: string;
+  preview: string;
+  timestamp: string;
+  unread: boolean;
+  interest: number | null;
+  class: ReplyClass;
+}
+
+export interface InstantlyReplies {
+  items: InstantlyReply[];
+  counts: Record<string, number>;
+  fetched_at: string;
+}
+
+export interface InstantlyThread {
+  id: string;
+  messages: { id: string; from: string; to: string[]; subject: string; timestamp: string; direction: 'sent' | 'received'; text: string }[];
+}
