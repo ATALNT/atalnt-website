@@ -15,6 +15,7 @@ import { fmt, Panel, SectionTitle, StatusLight, Sparkline, Tile } from '@/compon
 import { CampaignDrawer } from '@/components/instantly/CampaignDrawer';
 import { ReplyInbox } from '@/components/instantly/ReplyInbox';
 import { OpportunityBoard } from '@/components/instantly/OpportunityBoard';
+import { TrendChart, CampaignCompare } from '@/components/instantly/Charts';
 
 export default function InstantlyDashboard() {
   const { token, isAuthenticated, login, logout } = useAuth();
@@ -96,13 +97,21 @@ function CommandCenter({ token, onLogout }: { token: string; onLogout: () => voi
             tone={t && t.sends_pct < 0.3 && new Date().getUTCHours() > 18 ? 'warn' : 'neutral'} icon={<Send className="h-4 w-4" />} />
           <Tile label="Reply rate" value={t ? fmt.pct(t.reply_rate) : '—'} sub={t ? `vs ${fmt.pct(t.historical_reply_rate)} historical · ${t.replies_today} today` : undefined}
             tone={t && t.reply_rate >= t.historical_reply_rate * 3 ? 'good' : 'neutral'} icon={<MessageSquare className="h-4 w-4" />} onClick={() => setInbox('all')} />
-          <Tile label="Positive replies" value={t ? fmt.int(t.positive_replies) : '—'} sub={t ? `${t.positive_today} today · click to work them` : undefined}
+          <Tile label="Interested" value={t ? fmt.int(t.positive_replies) : '—'} sub={t ? `people who said yes · ${t.positive_today} today` : undefined}
             tone="good" icon={<ThumbsUp className="h-4 w-4" />} onClick={() => setInbox('positive')} />
           <Tile label="Bounce" value={t ? fmt.pct(t.bounce_rate, 1) : '—'} sub={t ? `guard pauses a campaign at ${fmt.pct(t.bounce_trip, 0)}` : undefined}
             tone={t ? (t.bounce_rate > 0.035 ? 'bad' : t.bounce_rate > 0.02 ? 'warn' : 'neutral') : 'neutral'} icon={<AlertTriangle className="h-4 w-4" />} />
           <Tile label="Demos requested" value={t ? fmt.int(t.demos_requested) : '—'} sub="said yes to the overview · click to follow up"
             tone="gold" icon={<CalendarCheck className="h-4 w-4" />} onClick={() => setInbox('demo')} />
         </section>
+
+        {/* Charts: the trend that matters and the campaign comparison */}
+        {d && (
+          <section className="grid gap-3 lg:grid-cols-5">
+            <div className="lg:col-span-3"><TrendChart data={d.trend} /></div>
+            <div className="lg:col-span-2"><CampaignCompare rows={d.active} /></div>
+          </section>
+        )}
 
         {/* Layer 1: active campaigns */}
         <section>
@@ -120,6 +129,7 @@ function CommandCenter({ token, onLogout }: { token: string; onLogout: () => voi
                 <tr className="text-[10px] uppercase tracking-widest text-[#8a8a9a] border-b border-white/[0.06]">
                   <th className="text-left px-4 py-3 font-medium"></th>
                   <th className="text-left px-2 py-3 font-medium">Campaign</th>
+                  <th className="text-right px-2 py-3 font-medium text-[#2DD4BF]">Interested</th>
                   <th className="text-right px-2 py-3 font-medium">Leads left</th>
                   <th className="text-right px-2 py-3 font-medium">Sent</th>
                   <th className="text-right px-2 py-3 font-medium">Reply</th>
@@ -129,7 +139,7 @@ function CommandCenter({ token, onLogout }: { token: string; onLogout: () => voi
                 </tr>
               </thead>
               <tbody>
-                {q.isLoading && [0, 1, 2].map((i) => <tr key={i}><td colSpan={8} className="px-4 py-4"><div className="h-5 rounded bg-white/[0.04] animate-pulse" /></td></tr>)}
+                {q.isLoading && [0, 1, 2].map((i) => <tr key={i}><td colSpan={9} className="px-4 py-4"><div className="h-5 rounded bg-white/[0.04] animate-pulse" /></td></tr>)}
                 {d?.active.map((r) => {
                   const perDay = (d.daily[r.id] || []).slice(-7).reduce((s, x) => s + x.sent, 0) / 7;
                   const days = perDay > 0 ? r.remaining / perDay : 0;
@@ -140,6 +150,11 @@ function CommandCenter({ token, onLogout }: { token: string; onLogout: () => voi
                         <div className="font-semibold text-white">{r.name.replace(/^GMAIL:\s*/, '')}</div>
                         <div className="text-[11px] text-white/35">{fmt.int(r.leads)} leads · {r.senders} senders</div>
                       </td>
+                      <td className="px-2 py-3 text-right">
+                        <span className={`font-display text-lg font-bold ${r.interested > 0 ? 'text-[#2DD4BF]' : 'text-white/25'}`}>{r.interested}</span>
+                        {r.demos > 0 && <span className="ml-1 text-[10px] text-[#D4A853]">{r.demos} demo</span>}
+                        {r.sent > 0 && <div className="text-[10px] text-white/30">{(r.interested_rate * 1000).toFixed(1)} per 1k</div>}
+                      </td>
                       <td className="px-2 py-3 text-right font-mono text-white/80">{fmt.int(r.remaining)}</td>
                       <td className="px-2 py-3 text-right font-mono text-white/80">{fmt.int(r.sent)}</td>
                       <td className={`px-2 py-3 text-right font-mono font-semibold ${r.reply_rate >= 0.01 ? 'text-teal-400' : r.reply_rate >= 0.005 ? 'text-white/80' : 'text-white/50'}`}>{fmt.pct(r.reply_rate)}</td>
@@ -149,7 +164,7 @@ function CommandCenter({ token, onLogout }: { token: string; onLogout: () => voi
                     </tr>
                   );
                 })}
-                {d && d.active.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-white/40">No active campaigns.</td></tr>}
+                {d && d.active.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-white/40">No active campaigns.</td></tr>}
               </tbody>
             </table>
           </Panel>
@@ -168,6 +183,7 @@ function CommandCenter({ token, onLogout }: { token: string; onLogout: () => voi
                 <thead>
                   <tr className="text-[10px] uppercase tracking-widest text-[#8a8a9a] border-b border-white/[0.06]">
                     <th className="text-left px-4 py-3 font-medium">Campaign</th>
+                    <th className="text-right px-2 py-3 font-medium text-[#2DD4BF]">Interested</th>
                     <th className="text-right px-2 py-3 font-medium">Sent</th>
                     <th className="text-right px-2 py-3 font-medium">Replies</th>
                     <th className="text-right px-2 py-3 font-medium">Reply</th>
@@ -178,6 +194,7 @@ function CommandCenter({ token, onLogout }: { token: string; onLogout: () => voi
                   {d.past.map((r) => (
                     <tr key={r.id} onClick={() => setDrawer(r)} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.03] cursor-pointer">
                       <td className="px-4 py-2.5 text-white/80">{r.name}</td>
+                      <td className={`px-2 py-2.5 text-right font-mono font-semibold ${r.interested > 0 ? 'text-[#2DD4BF]' : 'text-white/25'}`}>{r.interested}</td>
                       <td className="px-2 py-2.5 text-right font-mono text-white/60">{fmt.int(r.sent)}</td>
                       <td className="px-2 py-2.5 text-right font-mono text-white/60">{fmt.int(r.replies)}</td>
                       <td className={`px-2 py-2.5 text-right font-mono font-semibold ${r.reply_rate >= 0.004 ? 'text-teal-400' : 'text-white/60'}`}>{fmt.pct(r.reply_rate)}</td>

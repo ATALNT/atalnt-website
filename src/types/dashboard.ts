@@ -213,6 +213,9 @@ export interface InstantlyCampaignRow {
   bounce_rate: number;
   health: { light: 'green' | 'yellow' | 'red'; reason: string };
   created?: string;
+  interested: number;
+  demos: number;
+  interested_rate: number;
 }
 
 export interface InstantlyOverview {
@@ -227,6 +230,7 @@ export interface InstantlyOverview {
   active: InstantlyCampaignRow[];
   past: InstantlyCampaignRow[];
   daily: Record<string, { date: string; sent: number; replies: number }[]>;
+  trend: { date: string; sent: number; replies: number; interested: number }[];
   fleet: { gmail_total: number; gmail_eligible: number; error_state: number; total: number };
   guard: { ran_at: string | null; verdict: string; problems: string[] };
 }

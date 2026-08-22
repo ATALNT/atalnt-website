@@ -87,6 +87,7 @@ async function overview() {
           bounced: a.bounced_count || 0, opportunities: a.total_opportunities || 0,
           reply_rate: pct(humanReplies, sent), bounce_rate: pct(a.bounced_count || 0, sent),
           health: healthOf(a), created: c.timestamp_created,
+          interested: 0, demos: 0, interested_rate: 0,
         };
       });
     const active = rows.filter((r) => r.status === 1 && !r.isolated).sort((a, b) => b.reply_rate - a.reply_rate);
@@ -121,6 +122,33 @@ async function overview() {
     const demos = feed.items.filter((x) => x.class === 'demo');
     const positiveToday = positive.filter((x) => (x.timestamp || '').slice(0, 10) === today).length;
 
+    // join interested counts onto every campaign row, one person counted once per campaign
+    const interestedBy = new Map<string, Set<string>>();
+    const demoBy = new Map<string, Set<string>>();
+    for (const x of positive) {
+      const k = x.campaign_id; const who = x.from_email.toLowerCase();
+      if (!interestedBy.has(k)) interestedBy.set(k, new Set());
+      interestedBy.get(k)!.add(who);
+      if (x.class === 'demo') { if (!demoBy.has(k)) demoBy.set(k, new Set()); demoBy.get(k)!.add(who); }
+    }
+    for (const r of [...active, ...past]) {
+      r.interested = interestedBy.get(r.id)?.size || 0;
+      r.demos = demoBy.get(r.id)?.size || 0;
+      r.interested_rate = pct(r.interested, r.sent);
+    }
+
+    // interested-over-time for the main chart: bucket positive replies by day (last 14)
+    const days: string[] = [];
+    for (let i = 13; i >= 0; i--) days.push(new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10));
+    const sentByDay = new Map<string, number>(); const repliesByDay = new Map<string, number>();
+    for (const arr of Object.values(daily)) for (const x of arr) {
+      sentByDay.set(x.date, (sentByDay.get(x.date) || 0) + x.sent);
+      repliesByDay.set(x.date, (repliesByDay.get(x.date) || 0) + x.replies);
+    }
+    const interestedByDay = new Map<string, number>();
+    for (const x of positive) { const k = (x.timestamp || '').slice(0, 10); interestedByDay.set(k, (interestedByDay.get(k) || 0) + 1); }
+    const trend = days.map((d) => ({ date: d, sent: sentByDay.get(d) || 0, replies: repliesByDay.get(d) || 0, interested: interestedByDay.get(d) || 0 }));
+
     return {
       generated_at: new Date().toISOString(),
       tiles: {
@@ -130,7 +158,7 @@ async function overview() {
         bounce_rate: pct(actBounced, actSent), bounce_trip: 0.05,
         demos_requested: demos.length,
       },
-      active, past, daily,
+      active, past, daily, trend,
       fleet: { gmail_total: gm.length, gmail_eligible: eligible.length, error_state: errState, total: accounts.length },
       guard: await guardStatus(),
     };
