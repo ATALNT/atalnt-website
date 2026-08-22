@@ -10,10 +10,11 @@ import { RefreshCw, LogOut, Inbox, ChevronDown, ChevronRight, Send, MessageSquar
 import { useAuth } from '@/hooks/use-auth';
 import { DashboardLogin } from '@/components/dashboard/DashboardLogin';
 import { fetchInstantlyOverview } from '@/lib/dashboard-api';
-import type { InstantlyCampaignRow, ReplyClass } from '@/types/dashboard';
+import type { InstantlyCampaignRow, InstantlyReply, ReplyClass } from '@/types/dashboard';
 import { fmt, Panel, SectionTitle, StatusLight, Sparkline, Tile } from '@/components/instantly/primitives';
 import { CampaignDrawer } from '@/components/instantly/CampaignDrawer';
 import { ReplyInbox } from '@/components/instantly/ReplyInbox';
+import { OpportunityBoard } from '@/components/instantly/OpportunityBoard';
 
 export default function InstantlyDashboard() {
   const { token, isAuthenticated, login, logout } = useAuth();
@@ -32,6 +33,7 @@ export default function InstantlyDashboard() {
 function CommandCenter({ token, onLogout }: { token: string; onLogout: () => void }) {
   const [drawer, setDrawer] = useState<InstantlyCampaignRow | null>(null);
   const [inbox, setInbox] = useState<ReplyClass | 'all' | 'actionable' | null>(null);
+  const [openReply, setOpenReply] = useState<InstantlyReply | null>(null);
   const [showPast, setShowPast] = useState(false);
 
   const q = useQuery({
@@ -84,6 +86,9 @@ function CommandCenter({ token, onLogout }: { token: string; onLogout: () => voi
 
       <main className="relative z-10 max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-8">
         {q.isError && <div className="rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-300">Could not load: {(q.error as Error).message}</div>}
+
+        {/* Layer 0: the reason this page exists */}
+        <OpportunityBoard token={token} onOpen={(r) => { setOpenReply(r); setInbox('actionable'); }} />
 
         {/* Layer 1: tiles */}
         <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
@@ -203,16 +208,16 @@ function CommandCenter({ token, onLogout }: { token: string; onLogout: () => voi
 
       {inbox && (
         <div className="fixed inset-0 z-50 flex">
-          <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={() => setInbox(null)} />
+          <div className="flex-1 bg-black/60 backdrop-blur-sm" onClick={() => { setInbox(null); setOpenReply(null); }} />
           <aside className="w-full max-w-3xl h-full overflow-y-auto bg-[#0d0e13] border-l border-white/[0.08]">
             <div className="sticky top-0 z-10 bg-[#0d0e13]/95 backdrop-blur border-b border-white/[0.06] px-6 py-4 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold font-display">Reply inbox</h2>
                 <div className="text-xs text-white/40">Every reply across active campaigns. Classify here, answer in the Unibox.</div>
               </div>
-              <button onClick={() => setInbox(null)} className="text-white/40 hover:text-white p-1"><X className="h-5 w-5" /></button>
+              <button onClick={() => { setInbox(null); setOpenReply(null); }} className="text-white/40 hover:text-white p-1"><X className="h-5 w-5" /></button>
             </div>
-            <div className="px-6 py-5"><ReplyInbox token={token} initialFilter={inbox} /></div>
+            <div className="px-6 py-5"><ReplyInbox token={token} initialFilter={inbox} initialOpen={openReply} /></div>
           </aside>
         </div>
       )}

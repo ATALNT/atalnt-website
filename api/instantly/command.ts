@@ -8,7 +8,7 @@
 //   campaign&id=                  daily + step analytics + sequence shell + audience
 //   messaging&id=[&lead=]         every step rendered as a recipient sees it
 //   replies[&campaign=&class=]    classified reply feed across campaigns
-//   thread&id=                    one full thread
+//   thread&email=                 the whole conversation with one person
 //   classify (POST)               {lead_email, status} -> Instantly interest status
 //
 // Every Instantly call goes through api/_lib/instantly-client.ts, which is
@@ -19,7 +19,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyDashboardToken, corsHeaders } from '../_lib/auth-middleware.js';
 import { loadAggregates } from '../_lib/aggregate-store.js';
 import {
-  instantly, instantlyList, instantlyLeads, isIsolated, classifyReply, renderStep, titleGroup, emailText, replyOnly,
+  instantly, instantlyList, instantlyLeads, isIsolated, classifyReply, renderStep, titleGroup, emailText, replyOnly, toList,
   FREE_MAILBOX_RE,
   type InstantlyCampaign, type InstantlyLead, type InstantlyEmail, type DailyRow, type StepRow, type Json,
 } from '../_lib/instantly-client.js';
@@ -254,16 +254,21 @@ async function repliesFeed(opts: { campaign?: string; cls?: string; limit?: numb
   return { items, counts, fetched_at: base.fetched_at };
 }
 
-async function thread(id: string) {
-  type ThreadResp = { items?: InstantlyEmail[]; messages?: InstantlyEmail[] } | InstantlyEmail[];
-  const t = await instantly<ThreadResp>(`emails/threads/${encodeURIComponent(id)}`);
-  const list: InstantlyEmail[] = Array.isArray(t) ? t : (t.items || t.messages || []);
+async function thread(email: string) {
+  // Instantly v2 has no GET /emails/threads/{id}, and ?thread_id= is silently
+  // ignored (returns unrelated mail). The thread id on a received reply also
+  // differs from the id on the sent mail. So: search by the person's address,
+  // which returns both directions, and present the whole conversation.
+  const page = await instantly<{ items?: InstantlyEmail[] }>(`emails?search=${encodeURIComponent(email)}&limit=50`);
+  const list = (page.items || []).filter((m) =>
+    (m.from_address_email || '').toLowerCase() === email.toLowerCase() ||
+    toList(m.to_address_email_list).some((t) => t.toLowerCase() === email.toLowerCase()));
   const msgs = list.map((m) => ({
-    id: m.id, from: m.from_address_email || '', to: m.to_address_email_list || [], subject: m.subject || '',
+    id: m.id, from: m.from_address_email || '', to: toList(m.to_address_email_list), subject: m.subject || '',
     timestamp: m.timestamp_email || m.timestamp_created || '', direction: (m.ue_type === 1 ? 'sent' : 'received') as 'sent' | 'received',
-    text: renderStep(emailText(m), {}, '', ''),
+    text: m.ue_type === 1 ? renderStep(emailText(m), {}, '', '') : (replyOnly(emailText(m)) || renderStep(emailText(m), {}, '', '')),
   })).sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  return { id, messages: msgs };
+  return { id: email, messages: msgs };
 }
 
 async function classify(body: unknown) {
@@ -296,7 +301,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'campaign': return res.status(200).json(await campaignDetail(String(req.query.id || '')));
       case 'messaging': return res.status(200).json(await messaging(String(req.query.id || ''), req.query.lead ? String(req.query.lead) : undefined));
       case 'replies': return res.status(200).json(await repliesFeed({ campaign: req.query.campaign ? String(req.query.campaign) : undefined, cls: req.query.class ? String(req.query.class) : undefined }));
-      case 'thread': return res.status(200).json(await thread(String(req.query.id || '')));
+      case 'thread': return res.status(200).json(await thread(String(req.query.email || req.query.id || '')));
       case 'classify':
         if (req.method !== 'POST') return res.status(405).json({ error: 'POST required' });
         return res.status(200).json(await classify(req.body));

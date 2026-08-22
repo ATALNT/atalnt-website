@@ -84,8 +84,8 @@ export async function fetchInstantlyReplies(token: string, opts: { campaign?: st
   return fetchWithAuth(`${CMD}?${q.toString()}`, token);
 }
 
-export async function fetchInstantlyThread(token: string, id: string): Promise<InstantlyThread> {
-  return fetchWithAuth(`${CMD}?view=thread&id=${encodeURIComponent(id)}`, token);
+export async function fetchInstantlyThread(token: string, email: string): Promise<InstantlyThread> {
+  return fetchWithAuth(`${CMD}?view=thread&email=${encodeURIComponent(email)}`, token);
 }
 
 export async function classifyInstantlyReply(

@@ -98,7 +98,7 @@ export interface InstantlyLead {
 export interface InstantlyEmail {
   id: string; thread_id: string; campaign_id?: string; eaccount?: string; ue_type?: number;
   from_address_email?: string; from_address_json?: { name?: string } | { name?: string }[];
-  to_address_email_list?: string[]; subject?: string; content_preview?: string;
+  to_address_email_list?: string[] | string; subject?: string; content_preview?: string;
   body?: string | { text?: string; html?: string }; timestamp_email?: string; timestamp_created?: string;
   is_unread?: boolean | number; i_status?: number | null;
 }
@@ -109,6 +109,9 @@ export interface InstantlyCampaign {
 }
 export interface DailyRow { date: string; sent?: number; unique_replies?: number; unique_replies_automatic?: number; opportunities?: number }
 export interface StepRow { step?: string; variant?: string | null; sent?: number; unique_replies?: number }
+export const toList = (v: string[] | string | undefined): string[] =>
+  Array.isArray(v) ? v : (v || '').split(/[,;]\s*/).map((x) => x.trim()).filter(Boolean);
+
 export const emailText = (e: Pick<InstantlyEmail, 'body' | 'content_preview'>): string =>
   typeof e.body === 'object' && e.body ? (e.body.text || e.body.html || '') : (typeof e.body === 'string' ? e.body : '') || e.content_preview || '';
 

@@ -17,10 +17,10 @@ const FILTERS: { key: ReplyClass | 'all' | 'actionable'; label: string }[] = [
 ];
 
 export function ReplyInbox({
-  token, campaignId, initialFilter = 'actionable', compact = false,
-}: { token: string; campaignId?: string; initialFilter?: ReplyClass | 'all' | 'actionable'; compact?: boolean }) {
+  token, campaignId, initialFilter = 'actionable', compact = false, initialOpen = null,
+}: { token: string; campaignId?: string; initialFilter?: ReplyClass | 'all' | 'actionable'; compact?: boolean; initialOpen?: InstantlyReply | null }) {
   const [filter, setFilter] = useState<ReplyClass | 'all' | 'actionable'>(initialFilter);
-  const [open, setOpen] = useState<InstantlyReply | null>(null);
+  const [open, setOpen] = useState<InstantlyReply | null>(initialOpen);
   const q = useQuery({
     queryKey: ['instantly', 'replies', campaignId || 'all'],
     queryFn: () => fetchInstantlyReplies(token, { campaign: campaignId }),
@@ -83,7 +83,7 @@ export function ReplyInbox({
 
 function Thread({ token, reply, onBack }: { token: string; reply: InstantlyReply; onBack: () => void }) {
   const qc = useQueryClient();
-  const t = useQuery({ queryKey: ['instantly', 'thread', reply.thread_id], queryFn: () => fetchInstantlyThread(token, reply.thread_id) });
+  const t = useQuery({ queryKey: ['instantly', 'thread', reply.from_email], queryFn: () => fetchInstantlyThread(token, reply.from_email) });
   const mut = useMutation({
     mutationFn: (status: 'interested' | 'demo' | 'negative' | 'wrong_person') => classifyInstantlyReply(token, reply.from_email, status),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['instantly', 'replies'] }); qc.invalidateQueries({ queryKey: ['instantly', 'overview'] }); },
