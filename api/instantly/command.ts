@@ -117,10 +117,32 @@ async function overview() {
     const actBounced = active.reduce((s, r) => s + r.bounced, 0);
 
     // positive / demo counts come from the reply feed, cached separately
-    const feed = await repliesFeed({ limit: 400 });
-    const positive = feed.items.filter((x) => x.class === 'positive' || x.class === 'demo');
-    const demos = feed.items.filter((x) => x.class === 'demo');
+    const feed = await repliesFeed({ limit: 1500 });
+    const activeIds = new Set(active.map((r) => r.id));
+    const positive = feed.items.filter((x) => (x.class === 'positive' || x.class === 'demo') && activeIds.has(x.campaign_id));
+    const demos = positive.filter((x) => x.class === 'demo');
     const positiveToday = positive.filter((x) => (x.timestamp || '').slice(0, 10) === today).length;
+
+    // durable interested: leads whose lt_interest_status was set (via the classify
+    // buttons or Instantly's UI) count even after their reply ages out of the feed
+    for (const r of active) {
+      try {
+        const marked = await instantly<{ items?: InstantlyLead[] }>('leads/list', {
+          method: 'POST', body: { campaign: r.id, filter: 'FILTER_VAL_INTERESTED', limit: 100 },
+        });
+        for (const l of marked.items || []) {
+          if ((l.lt_interest_status ?? 0) >= 1 && l.email) {
+            const em = l.email.toLowerCase();
+            if (!positive.some((x) => x.from_email.toLowerCase() === em)) {
+              positive.push({ id: `lead-${l.id}`, thread_id: '', campaign_id: r.id, campaign: r.name,
+                from_email: em, from_name: [l.first_name, l.last_name].filter(Boolean).join(' '),
+                to_mailbox: '', subject: '', preview: 'Marked interested in Instantly. Open the thread for the conversation.',
+                timestamp: l.timestamp_last_contact || '', unread: false, interest: l.lt_interest_status ?? 1, class: 'positive' as const });
+            }
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
 
     // join interested counts onto every campaign row, one person counted once per campaign
     const interestedBy = new Map<string, Set<string>>();
@@ -244,7 +266,7 @@ async function repliesFeed(opts: { campaign?: string; cls?: string; limit?: numb
     // newest-first feed is not guaranteed ordered; pull a bounded window and sort client-side
     const items: InstantlyEmail[] = [];
     let after: string | undefined;
-    while (items.length < (opts.limit || 400)) {
+    while (items.length < (opts.limit || 1500)) {
       const page = await instantly<{ items?: InstantlyEmail[]; next_starting_after?: string }>(`${q}&limit=100${after ? `&starting_after=${encodeURIComponent(after)}` : ''}`);
       const got = page.items || [];
       if (!got.length) break;
