@@ -85,7 +85,7 @@ const DIALER_LIMIT = 30;
 // domain sending 20/day is exactly how the previous fleet burned. Any non-free
 // mailbox younger than DOMAIN_RAMP_DAYS is capped at DOMAIN_RAMP_LIMIT regardless
 // of score; it graduates to DAILY_LIMIT automatically once it ages past the gate.
-const DOMAIN_RAMP_LIMIT = 5;
+const DOMAIN_RAMP_LIMIT = 10;
 const DOMAIN_RAMP_DAYS = 21;
 const ageDays = (a) => {
   const t = Date.parse(a.timestamp_created || '');

@@ -80,7 +80,7 @@ const FREE_MAILBOX_RE = /@(gmail|yahoo|hotmail|outlook|aol|icloud|live|msn)\.com
 // DOMAIN WARMUP RAMP — mirror of .github/ci/instantly-health.mjs. A non-free
 // mailbox younger than DOMAIN_RAMP_DAYS is capped at DOMAIN_RAMP_LIMIT no matter
 // how good its warmup score looks. Both files must agree or one resets the other.
-const DOMAIN_RAMP_LIMIT = 5;
+const DOMAIN_RAMP_LIMIT = 10;
 const DOMAIN_RAMP_DAYS = 21;
 const ageDays = (a: { timestamp_created?: string }) => {
   const t = Date.parse(a.timestamp_created || '');
