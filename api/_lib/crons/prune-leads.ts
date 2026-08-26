@@ -79,6 +79,33 @@ async function scanCampaignForDeadLeads(campaignId: string, headers: Record<stri
   return deadIds;
 }
 
+// Bounced-only scan, for ISOLATED: campaigns. Their completed leads stay (that is
+// the do-not-re-email record) but a bounced address is dead weight: it can never
+// receive mail again, yet it still occupies a slot in the 50k contact allowance.
+async function scanCampaignForBouncedLeads(campaignId: string, headers: Record<string, string>): Promise<string[]> {
+  const deadIds: string[] = [];
+  let startAfter: string | undefined;
+  while (true) {
+    const body: Record<string, unknown> = { campaign: campaignId, limit: 100 };
+    if (startAfter) body.starting_after = startAfter;
+    const resp = await fetch('https://api.instantly.ai/api/v2/leads/list', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) break;
+    const data: ListResponse<InstantlyLead> = await resp.json();
+    for (const lead of data.items || []) {
+      if (lead.campaign !== campaignId) continue;
+      if ((lead.email_reply_count || 0) > 0) continue; // PROTECT every responder, always
+      if (lead.status === STATUS_BOUNCED) deadIds.push(lead.id);
+    }
+    if (data.next_starting_after) startAfter = data.next_starting_after;
+    else break;
+  }
+  return deadIds;
+}
+
 // Delete a single lead. DELETE must NOT carry a Content-Type/body or Instantly errors.
 async function deleteLead(id: string, authHeader: Record<string, string>): Promise<boolean> {
   const resp = await fetch(`https://api.instantly.ai/api/v2/leads/${id}`, {
@@ -116,15 +143,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // ISOLATED: campaigns (dial companions: daniel@/gabriel@ for sales, and the
-    // sourcing six on @atalntrecruiting.com) are exempt. Their completed leads are
-    // the dedupe record that stops a re-pasted list from re-emailing someone —
-    // deleting them would erase that memory.
-    const campaigns = (await fetchAllCampaigns(headers)).filter(
-      (c) => c.status !== STATUS_DELETED_CAMPAIGN && !(c.name || '').startsWith('ISOLATED:')
+    // sourcing six on @atalntrecruiting.com) keep their COMPLETED leads: those are
+    // the record that stops a re-pasted list from re-emailing someone.
+    //
+    // Their BOUNCED leads are pruned like anywhere else (2026-08-26). A bounced
+    // address is dead — it can never be mailed again — so it is pure consumption
+    // of the workspace's 50,000-contact allowance. Leaving them exempt is what let
+    // 106 dead addresses pile up until the plan filled and recruiters started
+    // getting "Lead limit reached. Remaining uploads: 0" on upload.
+    const allCampaigns = (await fetchAllCampaigns(headers)).filter(
+      (c) => c.status !== STATUS_DELETED_CAMPAIGN
     );
+    const campaigns = allCampaigns.filter((c) => !(c.name || '').startsWith('ISOLATED:'));
+    const isolatedCampaigns = allCampaigns.filter((c) => (c.name || '').startsWith('ISOLATED:'));
 
     // Scan campaigns with limited concurrency so we cover all of them within the timeout.
     const perCampaign: { id: string; name: string; deadIds: string[] }[] = [];
+    await runPool(isolatedCampaigns, 5, async (c) => {
+      const deadIds = await scanCampaignForBouncedLeads(c.id, headers);
+      perCampaign.push({ id: c.id, name: c.name || c.id, deadIds });
+    });
     await runPool(campaigns, 5, async (c) => {
       const deadIds = await scanCampaignForDeadLeads(c.id, headers);
       perCampaign.push({ id: c.id, name: c.name || c.id, deadIds });
@@ -140,11 +178,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .sort((a, b) => b.removed - a.removed);
 
     const result = {
-      campaigns_scanned: campaigns.length,
+      campaigns_scanned: campaigns.length + isolatedCampaigns.length,
       leads_found_dead: allDead.length,
       leads_deleted: deleted,
       by_campaign: byCampaign,
-      rule: 'delete bounced (-1) + completed (3) with zero replies; never delete a lead with any reply',
+      rule: 'normal campaigns: delete bounced (-1) + completed (3) with zero replies. ISOLATED campaigns: delete bounced only, completed are the do-not-re-email record. Never delete a lead with any reply.',
       timestamp: new Date().toISOString(),
     };
     console.log('Lead pruner result:', JSON.stringify(result));

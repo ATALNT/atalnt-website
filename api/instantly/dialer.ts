@@ -305,6 +305,51 @@ async function purgeCompleted(campaignId: string): Promise<number> {
   return deleted;
 }
 
+// ── Capacity headroom ───────────────────────────────────────────────────────
+// The workspace has a 50,000-contact allowance and it is STORAGE, not a monthly
+// counter: deleting leads frees slots immediately (measured 2026-08-26 — deleting
+// 5 dead addresses instantly turned a 403 "Remaining uploads: 0" into a
+// successful upload).
+//
+// Bounced leads are the obvious thing to reclaim. A bounced address can never
+// receive mail again, so it is a slot spent on nothing. The daily pruner clears
+// these, but if a recruiter hits the wall between runs this reclaims on demand so
+// they never see "Lead limit reached".
+const HEADROOM_TARGET = 250;
+
+async function freeCapacity(limit = HEADROOM_TARGET): Promise<number> {
+  let freed = 0;
+  for (const rep of Object.values(REPS)) {
+    if (freed >= limit) break;
+    let after: string | undefined;
+    const dead: string[] = [];
+    while (dead.length + freed < limit) {
+      const body: Record<string, unknown> = { campaign: rep.campaignId, limit: 100 };
+      if (after) body.starting_after = after;
+      const r = await inst(`${INSTANTLY}/leads/list`, { method: 'POST', body: JSON.stringify(body) });
+      if (!r || !r.ok) break;
+      const d: any = await r.json();
+      for (const l of d.items || []) {
+        if (l.campaign !== rep.campaignId) continue;
+        if ((l.email_reply_count || 0) > 0) continue; // never touch a responder
+        if (l.status === -1) dead.push(l.id);
+      }
+      after = d.next_starting_after;
+      if (!after) break;
+    }
+    for (const id of dead) {
+      if (freed >= limit) break;
+      if (await deleteLead(id)) freed++;
+    }
+  }
+  if (freed) console.log(`freeCapacity: reclaimed ${freed} bounced lead slots`);
+  return freed;
+}
+
+function isLeadLimitError(detail: string): boolean {
+  return /lead limit reached|remaining uploads/i.test(detail);
+}
+
 async function ensureCampaignActive(campaignId: string): Promise<boolean> {
   // The six campaigns ship as drafts (status 0), and a campaign that runs out of
   // leads flips to completed (status 3) — new leads then sit idle. Activate
@@ -719,6 +764,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // health guard spends from the same budget. One create per lead now, paced
     // below, so a big paste degrades into "slower" rather than "failed".
     let createsIssued = 0;
+    let reclaimed = false; // only sweep for capacity once per request
     for (const raw of leads) {
       const repKey = (raw.rep || '').toLowerCase();
       const repCfg = REPS[repKey];
@@ -791,7 +837,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (createsIssued > 0) await new Promise((s) => setTimeout(s, CREATE_SPACING_MS));
       createsIssued++;
 
-      const created = await createLead(repCfg.campaignId, lead);
+      let created = await createLead(repCfg.campaignId, lead);
+
+      // Out of contact slots: reclaim dead addresses and try once more, so the
+      // recruiter never has to think about the plan's capacity.
+      if (created.outcome === 'failed_create' && isLeadLimitError(created.detail) && !reclaimed) {
+        reclaimed = true;
+        const freed = await freeCapacity();
+        if (freed > 0) created = await createLead(repCfg.campaignId, lead);
+      }
+
       if (created.outcome === 'added') createdThisRequest.add(emailKey);
       results.push({ email: lead.email, rep: repKey, verifyStatus: v.status, ...created });
     }
