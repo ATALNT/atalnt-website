@@ -53,6 +53,12 @@ const PROTECTED_WARMUP_ONLY = new Set([
   'dee@atalntrecruiting.com',
   'jessica@atalntrecruiting.com',
   'jeet@atalntrecruiting.com',
+  // Founders, added 2026-08-28. Live @atalnt.net mailboxes that were being
+  // roster-synced as ordinary domain senders: they sent 8 cold emails each from
+  // the HR Leaders campaign before this was caught. They warm up and run their
+  // own ISOLATED campaigns, and are never cold senders for anything else.
+  'lavanya.p@atalnt.net',
+  'nik.j@atalnt.net',
 ]);
 
 // DIALER CARVE-OUT (2026-07-22, extended 2026-08-03): the sales pair (daniel@,
@@ -75,6 +81,8 @@ const ISOLATED_OWNER = new Map([
   ['a8c83126-9d82-4596-9fc0-b399ef6eb81b', 'remishka@atalntrecruiting.com'], // ISOLATED: Remishka Candidate Outreach
   ['a8b06382-1a01-413d-a515-d97953076458', 'kelona@atalntrecruiting.com'],   // ISOLATED: Kelona Candidate Outreach
   ['e1498c48-6a03-47c9-b4e9-7d1793a6a02d', 'jessica@atalntrecruiting.com'],  // ISOLATED: Jessica Candidate Outreach
+  ['171a21d1-f4c5-4d62-bfc6-5f0be5bc2364', 'lavanya.p@atalnt.net'],          // ISOLATED: Lavanya Outreach
+  ['8bddc79c-1d8a-47cc-bdba-94c58cdbc270', 'nik.j@atalnt.net'],          // ISOLATED: Nik Outreach
 ]);
 const DIALER_SENDERS = new Set(ISOLATED_OWNER.values());
 const DIALER_LIMIT = 30;

@@ -112,6 +112,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       'dee@atalntrecruiting.com',
       'jessica@atalntrecruiting.com',
       'jeet@atalntrecruiting.com',
+      // Founders, added 2026-08-28. See the note in instantly-health.mjs.
+      'lavanya.p@atalnt.net',
+      'nik.j@atalnt.net',
     ]);
     // DIALER CARVE-OUT (2026-07-22, extended 2026-08-03): these mailboxes run
     // portal-fed ISOLATED: dial-companion campaigns at 30/day. Without this they
@@ -127,6 +130,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       'remishka@atalntrecruiting.com',
       'kelona@atalntrecruiting.com',
       'jessica@atalntrecruiting.com',
+      'lavanya.p@atalnt.net',
+      'nik.j@atalnt.net',
     ]);
     const DIALER_LIMIT = 30;
     const healthy = new Set(
