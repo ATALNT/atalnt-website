@@ -376,6 +376,40 @@ async function runOnce(iterIndex = 0) {
     } else { softFail.push('analytics endpoint unreachable'); log('  SKIP  bounce guard: analytics unreachable this cycle'); }
   }
 
+  // ---- dead-air audit (2026-09-09): the 8 dialer mailboxes were disconnected
+  // for 18 days and nothing noticed, because ISOLATED campaigns are exempt from
+  // every other check and the dashboard excludes them. This check covers ALL
+  // active campaigns, ISOLATED included: if a campaign was sending recently but
+  // has produced zero sends across the last DEAD_AIR_WEEKDAYS complete weekdays
+  // (weekends excluded so Monday runs do not false-alarm), the guard reports it,
+  // which fails the workflow and emails the operator. Report-only: it never
+  // pauses or edits anything.
+  {
+    const DEAD_AIR_WEEKDAYS = 3;
+    const days = [];
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - 1); // exclude today: its window may not have opened
+    while (days.length < DEAD_AIR_WEEKDAYS + 7) {
+      const dow = d.getUTCDay();
+      if (dow !== 0 && dow !== 6) days.push(d.toISOString().slice(0, 10));
+      d.setUTCDate(d.getUTCDate() - 1);
+    }
+    const recent = new Set(days.slice(0, DEAD_AIR_WEEKDAYS));
+    const before = new Set(days.slice(DEAD_AIR_WEEKDAYS));
+    const camps = await req('https://api.instantly.ai/api/v2/campaigns?limit=100');
+    const clist = camps && camps.ok ? (await camps.json()).items || [] : [];
+    for (const c of clist.filter((x) => x.status === 1)) {
+      const daily = await req(`https://api.instantly.ai/api/v2/campaigns/analytics/daily?campaign_id=${c.id}`);
+      const rows = daily && daily.ok ? await daily.json() : [];
+      if (!Array.isArray(rows)) continue;
+      const sentRecent = rows.filter((r) => recent.has(r.date)).reduce((n, r) => n + (r.sent || 0), 0);
+      const sentBefore = rows.filter((r) => before.has(r.date)).reduce((n, r) => n + (r.sent || 0), 0);
+      if (sentRecent === 0 && sentBefore > 0) {
+        problems.push(`DEAD AIR: active campaign "${c.name}" sent ${sentBefore} in the prior week but ZERO in the last ${DEAD_AIR_WEEKDAYS} weekdays. Its mailboxes are broken, or it is finished and should be paused.`);
+      }
+    }
+  }
+
   // ---- reality audit: per-mailbox newest campaign send, non-roster accounts ----
   const since = Date.now() - AUDIT_WINDOW_MIN * 60_000;
   let nonRoster = accounts.filter((a) => !canStay.has(a.email.toLowerCase()));
