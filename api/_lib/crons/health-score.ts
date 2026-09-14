@@ -19,7 +19,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const MIN_SCORE = 97;
-const DEFAULT_DAILY_LIMIT = 20;
+const DEFAULT_DAILY_LIMIT = 10;
 
 interface InstantlyAccount {
   email: string;

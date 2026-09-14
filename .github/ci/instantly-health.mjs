@@ -33,7 +33,7 @@ if (!KEY) { console.error('INSTANTLY_API_KEY missing'); process.exit(2); }
 const H = { Authorization: `Bearer ${KEY}`, 'Content-Type': 'application/json', 'User-Agent': 'atalnt-health-guard' };
 const STAY_SCORE = 97;
 const ADD_SCORE = 98;
-const DAILY_LIMIT = 20;
+const DAILY_LIMIT = 10;
 // Must cover the whole gap between passes, or the audit inspects a sliver of it
 // and reports ALL CLEAR for time it never looked at. Enforcement is 4-hourly
 // (workflow cron), so the default matches at 240 minutes.
