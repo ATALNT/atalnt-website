@@ -687,6 +687,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET') {
       const action = (req.query?.action as string) || 'status';
 
+      // Batch re-verification for list refresh work (2026-09-16). The
+      // MyEmailVerifier key exists only in this deployment's env, so local
+      // tooling drives verification through here. POST-like usage via GET
+      // would blow the URL length, so emails arrive comma-joined and capped.
+      if (action === 'verify_batch') {
+        const raw = (req.query?.emails as string) || '';
+        const emails = raw.split(',').map((e) => e.trim().toLowerCase()).filter(Boolean).slice(0, 40);
+        if (!emails.length) return res.status(400).json({ error: 'emails required' });
+        const out: Record<string, string> = {};
+        for (const e of emails) {
+          const v = await verifyEmail(e);
+          out[e] = v.status;
+        }
+        return res.status(200).json({ results: out });
+      }
+
       if (action === 'reps') {
         return res.status(200).json({
           reps: Object.entries(REPS).map(([key, r]) => ({ key, name: r.name, email: r.email })),
