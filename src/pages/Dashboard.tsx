@@ -5,6 +5,7 @@ import { RecruitDashboard } from '@/components/dashboard/RecruitDashboard';
 import { VoiceDashboard } from '@/components/dashboard/VoiceDashboard';
 import { SalesDashboard } from '@/components/dashboard/SalesDashboard';
 import { SourcingDialer } from '@/components/dashboard/SourcingDialer';
+import { GlobalSearch } from '@/components/dashboard/GlobalSearch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -131,6 +132,9 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Global search: candidates and clients across Zoho Recruit and CRM */}
+            <GlobalSearch token={token} className="hidden md:block w-[280px] lg:w-[340px]" />
+
             {/* Date Preset Selector */}
             <Select value={datePreset} onValueChange={setDatePreset}>
               <SelectTrigger className="w-[180px] bg-white/[0.04] border-white/[0.08] text-sm text-white/80 hover:border-[#D4A853]/30 hover:bg-white/[0.06] transition-all rounded-lg h-9">
@@ -175,6 +179,7 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 relative z-10">
+        <GlobalSearch token={token} className="md:hidden mb-4" />
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="bg-white/[0.03] border border-white/[0.06] p-1 backdrop-blur-sm">
             <TabsTrigger

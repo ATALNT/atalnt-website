@@ -31,6 +31,10 @@ export async function fetchRecruitJobs(token: string) {
   return fetchWithAuth('/api/recruit/jobs', token);
 }
 
+export async function fetchDashboardSearch(token: string, query: string) {
+  return fetchWithAuth(`/api/recruit/jobs?q=${encodeURIComponent(query)}`, token);
+}
+
 export async function fetchRecruitApplications(token: string, from?: string, to?: string) {
   const params = new URLSearchParams();
   if (from) params.set('from', from);
